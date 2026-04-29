@@ -20,3 +20,6 @@ build_fast/
 # セーブデータ（実機に書かれるバイナリ、リポジトリには含めない）
 *.save
 mokoji_save.json
+
+# Claude Code セッションメタデータ
+.claude/
