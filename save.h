@@ -1,17 +1,24 @@
 #pragma once
 #include <cstdint>
 
-constexpr int MAX_GRAVES = 5;
+constexpr int MAX_GRAVES = 50;     // FIFO で古い墓から削除
+
+// 死因（お墓メッセージの分岐用）
+namespace DeathCauseValue {
+    constexpr uint8_t STATUS = 0;   // 餓死 / 不幸死
+    constexpr uint8_t AGE    = 1;   // 天寿
+}
 
 struct GraveRecord {
     char     name[8];
     char     breed[16];
-    uint16_t age_days;
+    uint8_t  age_days;             // 寿命 max 15 なので uint8_t で十分
+    uint8_t  death_cause;          // DeathCauseValue::STATUS or AGE
 };
 
 // フラッシュに書き込むセーブデータ。サイズが変わったら MAGIC を変えて互換性を切る。
 struct GameSaveData {
-    static constexpr uint32_t MAGIC = 0x4D4F4B31;  // 'MOK1'（lifespan_days 追加で MOK0 から bump）
+    static constexpr uint32_t MAGIC = 0x4D4F4B32;  // 'MOK2'（MAX_GRAVES=50 + death_cause 追加で MOK1 から bump）
 
     uint32_t magic;
     char     name[8];

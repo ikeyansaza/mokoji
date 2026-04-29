@@ -66,13 +66,17 @@ void Display::drawSleep(const Game& g) {
 void Display::drawGrave(const Game& g) {
     _oled->drawText("+ MEMORIES +", 0, 0);
     int n = g.graveCount();
-    int start = (n > 3) ? n - 3 : 0;
-    for (int i = start; i < n; ++i) {
-        const GraveRecord& gr = g.grave(i);
-        char line[32];
-        std::snprintf(line, sizeof(line), "%-4s %-4s %dd",
-                      gr.name, gr.breed, int(gr.age_days));
-        _oled->drawText(line, 0, 16 + (i - start) * 12);
+    // 新しい順に最大 3 件を表示（i=0 が最新）
+    int show = (n > 3) ? 3 : n;
+    for (int i = 0; i < show; ++i) {
+        const GraveRecord& gr = g.grave(n - 1 - i);
+        char line[40];
+        // TODO Phase 2: ひらがなフォント実装後に「天寿をまっとう」「旅立ち」へ。
+        // 暫定 ASCII: '*' = 天寿（age）、'x' = 餓死/不幸死（status）
+        char tag = (gr.death_cause == uint8_t(Game::DeathCause::AGE)) ? '*' : 'x';
+        std::snprintf(line, sizeof(line), "%-4s %-4s %dd %c",
+                      gr.name, gr.breed, int(gr.age_days), tag);
+        _oled->drawText(line, 0, 16 + i * 12);
     }
     _oled->drawText("press btn", 0, 56);
 }

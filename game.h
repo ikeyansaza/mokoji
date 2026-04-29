@@ -9,6 +9,10 @@ public:
     enum class Stage : uint8_t {
         LAMB, YOUNG_MOKO, YOUNG_SURA, YOUNG_RARE, ADULT
     };
+    enum class DeathCause : uint8_t {
+        STATUS = 0,   // 餓死 / 不幸死
+        AGE    = 1    // 天寿
+    };
     enum class Breed : uint8_t {
         NONE, CORRIEDALE, MERINO, SUFFOLK, SOUTHDOWN, EASTFRIESIAN
     };
@@ -103,5 +107,5 @@ private:
     void doAction(Action act);
     void evolveYoung();
     void evolveAdult();
-    void die();
+    void die(DeathCause cause);
 };

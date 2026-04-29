@@ -69,8 +69,23 @@ static void test_natural_death_within_lifespan_window() {
         if (g.happy()  < 50) menu_action(g, 1);
     }
     assert(g.graveCount() == initial + 1);
-    int age_days = g.grave(initial).age_days;
-    assert(age_days >= 10 && age_days <= 15);
+    const GraveRecord& gr = g.grave(initial);
+    assert(gr.age_days >= 10 && gr.age_days <= 15);
+    // 天寿で死んでいるはず（feed/pet が効いて空腹/幸福では死んでない）
+    assert(gr.death_cause == uint8_t(Game::DeathCause::AGE));
+}
+
+static void test_starvation_marked_as_status_death() {
+    Game g(nullptr);
+    int initial = g.graveCount();
+    // feed しないので空腹で死ぬはず（300 game-hour ≒ 12.5 日、寿命 10-15 日と
+    // ほぼ同じレンジに居るので run によっては寿命死に勝つことがある）
+    uint32_t safety = 500 * Game::TICKS_PER_HOUR;
+    while (g.graveCount() == initial && safety--) g.tick();
+    assert(g.graveCount() == initial + 1);
+    // 死因はどちらか必ず入る
+    uint8_t c = g.grave(initial).death_cause;
+    assert(c == uint8_t(Game::DeathCause::STATUS) || c == uint8_t(Game::DeathCause::AGE));
 }
 
 static void test_feed_via_menu() {
@@ -197,6 +212,7 @@ int main() {
     RUN(test_evolution_to_adult);
     RUN(test_death_increments_graves_and_preserves_them);
     RUN(test_natural_death_within_lifespan_window);
+    RUN(test_starvation_marked_as_status_death);
     RUN(test_dirty_flag_lifecycle);
     RUN(test_save_and_load_round_trip);
 

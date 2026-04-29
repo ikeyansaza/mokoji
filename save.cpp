@@ -20,16 +20,21 @@ bool Save::load(GameSaveData* out) const {
 }
 
 void Save::write(const GameSaveData& data) {
-    static_assert(sizeof(GameSaveData) <= FLASH_PAGE_SIZE,
-                  "GameSaveData が 1 page を超えた。複数 page に拡張する必要がある");
+    // セーブ領域は 1 sector (4KB)。データはその範囲に収まる限り何 page でも書ける。
+    static_assert(sizeof(GameSaveData) <= FLASH_SECTOR_SIZE,
+                  "GameSaveData が 1 sector (4KB) を超えた。SAVE 領域を増やす必要がある");
 
-    static uint8_t pageBuf[FLASH_PAGE_SIZE];
-    memset(pageBuf, 0xFF, sizeof(pageBuf));
-    memcpy(pageBuf, &data, sizeof(data));
+    static uint8_t buf[FLASH_SECTOR_SIZE];
+    memset(buf, 0xFF, sizeof(buf));
+    memcpy(buf, &data, sizeof(data));
+
+    // データサイズを FLASH_PAGE_SIZE (256B) の倍数に切り上げて書き込み
+    constexpr uint32_t prog_size =
+        ((sizeof(GameSaveData) + FLASH_PAGE_SIZE - 1) / FLASH_PAGE_SIZE) * FLASH_PAGE_SIZE;
 
     // フラッシュへの erase/program 中は割り込みを止める（XIP がブロックされるため）
     uint32_t ints = save_and_disable_interrupts();
     flash_range_erase(SAVE_OFFSET, FLASH_SECTOR_SIZE);
-    flash_range_program(SAVE_OFFSET, pageBuf, FLASH_PAGE_SIZE);
+    flash_range_program(SAVE_OFFSET, buf, prog_size);
     restore_interrupts(ints);
 }

@@ -143,11 +143,11 @@ void Game::tick() {
     // 自然死（寿命到達）と care-based 死亡（hunger/happy 限界）
     uint32_t age_days_now = _age_ticks / TICKS_PER_DAY;
     if (age_days_now >= _lifespan_days) {
-        die();
+        die(DeathCause::AGE);
         return;
     }
     if (_hunger <= 0 || _happy <= 0) {
-        die();
+        die(DeathCause::STATUS);
         return;
     }
 
@@ -329,13 +329,15 @@ void Game::evolveAdult() {
     if (_sound) _sound->happy();
 }
 
-void Game::die() {
+void Game::die(DeathCause cause) {
     GraveRecord rec{};
     std::memcpy(rec.name, _name, sizeof(rec.name));
     const char* slug = (_breed != Breed::NONE) ? breedSlug(_breed) : "??";
     std::strncpy(rec.breed, slug, sizeof(rec.breed) - 1);
     rec.breed[sizeof(rec.breed) - 1] = '\0';
-    rec.age_days = uint16_t(_age_ticks / TICKS_PER_DAY);
+    uint32_t age_days = _age_ticks / TICKS_PER_DAY;
+    rec.age_days = uint8_t(age_days > 255 ? 255 : age_days);
+    rec.death_cause = uint8_t(cause);
 
     if (_grave_count < MAX_GRAVES) {
         _graves[_grave_count++] = rec;
