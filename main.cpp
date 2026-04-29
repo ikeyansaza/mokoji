@@ -15,8 +15,12 @@ constexpr uint PIN_BTN_CENTER = 11;
 constexpr uint PIN_BTN_RIGHT  = 12;
 constexpr uint PIN_BUZZER     = 15;
 
-constexpr uint32_t TICK_MS          = 50;     // 約 20 fps
-constexpr uint32_t SAVE_INTERVAL_MS = 30000;  // 30 秒に 1 回フラッシュへ
+constexpr uint32_t TICK_MS                = 50;            // 約 20 fps
+// 状態が変わった時の最短セーブ間隔（連打などで頻繁に書かないようにする rate limit）
+constexpr uint32_t MIN_SAVE_INTERVAL_MS   = 30 * 1000;     // 30 秒
+// 状態が変わってなくても age_ticks 進行を捕まえるための強制セーブ間隔。
+// Pico フラッシュは ~100k 消去サイクル制限なので、30 分間隔なら 100k/(48/day) ≈ 5.7 年保つ。
+constexpr uint32_t FORCE_SAVE_INTERVAL_MS = 30 * 60 * 1000; // 30 分
 }  // namespace
 
 static void setupButton(uint pin) {
@@ -61,9 +65,13 @@ int main() {
         disp.draw(game);
         oled.show();
 
-        if (absolute_time_diff_us(last_save, get_absolute_time()) > int64_t(SAVE_INTERVAL_MS) * 1000) {
-            GameSaveData sd = game.saveData();
-            save.write(sd);
+        // dirty なら最短間隔以上経過していれば保存、dirty でなくても force 間隔で保存
+        int64_t since_save_us = absolute_time_diff_us(last_save, get_absolute_time());
+        bool min_elapsed   = since_save_us > int64_t(MIN_SAVE_INTERVAL_MS)   * 1000;
+        bool force_elapsed = since_save_us > int64_t(FORCE_SAVE_INTERVAL_MS) * 1000;
+        if ((game.isDirty() && min_elapsed) || force_elapsed) {
+            save.write(game.saveData());
+            game.clearDirty();
             last_save = get_absolute_time();
         }
 

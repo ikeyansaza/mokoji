@@ -121,6 +121,28 @@ static void test_death_increments_graves_and_preserves_them() {
     assert(g.graveCount() == initial + 2);
 }
 
+static void test_dirty_flag_lifecycle() {
+    Game g(nullptr);
+    // 新規ゲームは初回保存を促すために dirty=true で始まる
+    assert(g.isDirty());
+    g.clearDirty();
+    assert(!g.isDirty());
+
+    // age_ticks 単独の進行は dirty を立てない
+    g.tick();
+    assert(!g.isDirty());
+
+    // hourly check（ステータス変動）で dirty になる
+    for (uint32_t i = 0; i < Game::TICKS_PER_HOUR - 1; ++i) g.tick();
+    assert(g.isDirty());
+    g.clearDirty();
+
+    // メニュー操作（FEED）でも dirty
+    g.onButton(Game::Button::CENTER);
+    g.onButton(Game::Button::CENTER);
+    assert(g.isDirty());
+}
+
 static void test_save_and_load_round_trip() {
     Game g1(nullptr);
     // 状態を変化させる
@@ -154,6 +176,7 @@ int main() {
     RUN(test_evolution_to_young);
     RUN(test_evolution_to_adult);
     RUN(test_death_increments_graves_and_preserves_them);
+    RUN(test_dirty_flag_lifecycle);
     RUN(test_save_and_load_round_trip);
 
     std::printf("\n=== all tests passed ===\n\n");

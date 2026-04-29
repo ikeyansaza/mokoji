@@ -68,8 +68,9 @@ Game::Game(Sound* sound, const GameSaveData* data)
         for (int i = 0; i < _grave_count; ++i) {
             _graves[i] = data->graves[i];
         }
+        _dirty = false;   // フラッシュ上の内容と一致しているので clean
     } else {
-        newGame();
+        newGame();        // newGame 側で _dirty = true される
     }
 }
 
@@ -89,6 +90,7 @@ void Game::newGame() {
     _tend_pet   = 0;
     _tend_shear = 0;
     _sleeping   = false;
+    _dirty      = true;   // 新規開始 / 死亡からの再スタート時は最初の保存を促す
 }
 
 void Game::tick() {
@@ -110,6 +112,8 @@ void Game::tick() {
         } else if (_sleeping) {
             _sleepy = std::max(0, _sleepy - 2);
         }
+
+        _dirty = true;   // hunger/happy/wool/sleepy のいずれかが動いた可能性
     }
 
     if (!_sleeping && _sleepy >= 80) _sleeping = true;
@@ -177,12 +181,14 @@ void Game::doAction(Action act) {
             _hunger = std::min(100, _hunger + 30);
             _tend_feed += 1;
             _action = Action::FEED;
+            _dirty = true;
             if (_sound) _sound->mog();
             break;
         case Action::PET:
             _happy = std::min(100, _happy + 20);
             _tend_pet += 1;
             _action = Action::PET;
+            _dirty = true;
             if (_sound) _sound->mee();
             break;
         case Action::SHEAR:
@@ -191,6 +197,7 @@ void Game::doAction(Action act) {
                 _happy = std::min(100, _happy + 10);
                 _tend_shear += 1;
                 _action = Action::SHEAR;
+                _dirty = true;
                 if (_sound) _sound->joki();
             }
             break;
@@ -198,6 +205,7 @@ void Game::doAction(Action act) {
             // ミニゲーム未実装。仮で happy +5 とハッピー音
             _happy = std::min(100, _happy + 5);
             _action = Action::MINI;
+            _dirty = true;
             if (_sound) _sound->happy();
             break;
         default:
@@ -210,6 +218,7 @@ void Game::evolveYoung() {
     if (rand7() < uint32_t(RARE_PROB)) {
         _stage = Stage::YOUNG_RARE;
         _sheep_type = SheepType::RARE;
+        _dirty = true;
         if (_sound) _sound->happy();
         return;
     }
@@ -226,6 +235,7 @@ void Game::evolveYoung() {
         _stage = Stage::YOUNG_SURA;
         _sheep_type = SheepType::SURA;
     }
+    _dirty = true;
     if (_sound) _sound->happy();
 }
 
@@ -247,6 +257,7 @@ void Game::evolveAdult() {
     }
 
     _stage = Stage::ADULT;
+    _dirty = true;
     if (_sound) _sound->happy();
 }
 

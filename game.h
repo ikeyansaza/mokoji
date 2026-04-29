@@ -56,6 +56,11 @@ public:
     const GraveRecord& grave(int i) const { return _graves[i]; }
     uint32_t  ageTicks()    const { return _age_ticks; }   // テスト用
 
+    // Flash 寿命対策：状態が変わったときだけ true。main 側で saved 後に clearDirty()。
+    // age_ticks 単独の進行は dirty を立てない（main 側の長周期 force-save が拾う）。
+    bool      isDirty()     const { return _dirty; }
+    void      clearDirty()        { _dirty = false; }
+
 private:
     char       _name[8];
     Stage      _stage;
@@ -84,6 +89,8 @@ private:
 
     GraveRecord _graves[MAX_GRAVES];
     int         _grave_count;
+
+    bool        _dirty;
 
     void newGame();
     void updateWalk();
