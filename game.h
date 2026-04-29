@@ -16,11 +16,17 @@ public:
     enum class Breed : uint8_t {
         NONE, CORRIEDALE, MERINO, SUFFOLK, SOUTHDOWN, EASTFRIESIAN
     };
-    enum class SheepType : uint8_t { NONE, MOKO, SURA, RARE };
-    enum class Screen    : uint8_t { MAIN, MENU, GRAVE };
-    enum class Face      : uint8_t { LEFT, FRONT, RIGHT };
-    enum class Action    : uint8_t { NONE, FEED, PET, SHEAR, MINI };
-    enum class Button    : uint8_t { LEFT, CENTER, RIGHT };
+    enum class SheepType  : uint8_t { NONE, MOKO, SURA, RARE };
+    enum class Screen     : uint8_t { MAIN, MENU, GRAVE, NAMING };
+    enum class Face       : uint8_t { LEFT, FRONT, RIGHT };
+    enum class Action     : uint8_t { NONE, FEED, PET, SHEAR, MINI };
+    enum class Button     : uint8_t { LEFT, CENTER, RIGHT };
+    enum class NamingMode : uint8_t {
+        SELECT_MODE,   // [PRESET] / [TYPE] のどちらかを選ぶ
+        PRESET_PICK,   // プリセット 20 個を左右で wheel
+        INPUT_ROW,     // 手動入力：行を選ぶ（あ行/か行/.../BS/OK）
+        INPUT_CHAR,    // 手動入力：行内の文字を選ぶ
+    };
 
     static constexpr int  MENU_COUNT = 4;
     static const Action   MENU_ITEMS[MENU_COUNT];
@@ -50,6 +56,14 @@ public:
     Face      face()        const { return _face; }
     Action    action()      const { return _action; }
     const char* name()      const { return _name; }
+    const uint8_t* nameKana() const { return _name_kana; }
+
+    // 命名画面のアクセサ
+    NamingMode namingMode()   const { return _naming_mode; }
+    int        namingCursor() const { return _naming_cursor; }
+    int        inputRow()     const { return _input_row; }
+    int        inputLen()     const { return _input_len; }
+    const uint8_t* inputBuffer() const { return _input_buffer; }
     int       hunger()      const { return _hunger; }
     int       happy()       const { return _happy; }
     int       wool()        const { return _wool; }
@@ -66,7 +80,8 @@ public:
     void      clearDirty()        { _dirty = false; }
 
 private:
-    char       _name[8];
+    char       _name[8];                  // romaji 表示用
+    uint8_t    _name_kana[5];             // ひらがな index 列（kana::END 終端、最大 4 字）
     Stage      _stage;
     Breed      _breed;
     SheepType  _sheep_type;
@@ -94,6 +109,13 @@ private:
     WalkState  _walk_state;
     int        _walk_state_remaining;
 
+    // 命名画面の状態（save 不要）
+    NamingMode _naming_mode;
+    int        _naming_cursor;
+    int        _input_row;       // INPUT_CHAR 中の所属行
+    int        _input_len;       // _input_buffer に入っている文字数（0..4）
+    uint8_t    _input_buffer[5]; // 構築中の名前（kana::END 終端）
+
     Screen     _screen;
     int        _menu_cursor;
 
@@ -108,4 +130,10 @@ private:
     void evolveYoung();
     void evolveAdult();
     void die(DeathCause cause);
+
+    // 命名画面まわり
+    void startNaming();
+    void handleNamingButton(Button btn);
+    void commitName();           // _input_buffer を _name_kana / _name に確定して MAIN へ
+    void deriveRomajiName();     // _name_kana → _name を再生成
 };

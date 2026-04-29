@@ -1,5 +1,6 @@
 #include "display.h"
 #include "sprites.h"
+#include "kana.h"
 #include "pico/rand.h"
 #include <cstdio>
 #include <cstring>
@@ -14,9 +15,10 @@ void Display::draw(const Game& g) {
         return;
     }
     switch (g.screen()) {
-        case Game::Screen::MAIN:  drawMain(g);  break;
-        case Game::Screen::MENU:  drawMenu(g);  break;
-        case Game::Screen::GRAVE: drawGrave(g); break;
+        case Game::Screen::MAIN:   drawMain(g);   break;
+        case Game::Screen::MENU:   drawMenu(g);   break;
+        case Game::Screen::GRAVE:  drawGrave(g);  break;
+        case Game::Screen::NAMING: drawNaming(g); break;
     }
 }
 
@@ -120,6 +122,94 @@ const uint8_t (*Display::selectSprite(const Game& g, Game::Face face))[3] {
         case Game::Face::FRONT: return F;
     }
     return F;
+}
+
+// =====================================================================
+// 命名画面：プリセット選択 / 手動入力
+// 注意：当面はかな名を romaji で render する（ASCII 5x7 フォントのみ実装）。
+// ひらがなフォントを後で実装したら、ここの drawText を hiragana 描画に
+// 差し替えれば良い。
+// =====================================================================
+void Display::drawNaming(const Game& g) {
+    char buf[32];
+    switch (g.namingMode()) {
+        case Game::NamingMode::SELECT_MODE: {
+            _oled->drawText("name?", 0, 0);
+            int cur = g.namingCursor();
+            // 上：preset
+            if (cur == 0) {
+                _oled->fillRect(0, 18, 80, 12, true);
+                _oled->drawText("preset", 4, 20, true);
+            } else {
+                _oled->drawText("preset", 4, 20, false);
+            }
+            // 下：type
+            if (cur == 1) {
+                _oled->fillRect(0, 36, 80, 12, true);
+                _oled->drawText("type", 4, 38, true);
+            } else {
+                _oled->drawText("type", 4, 38, false);
+            }
+            _oled->drawText("L/R / OK", 0, 56);
+            break;
+        }
+        case Game::NamingMode::PRESET_PICK: {
+            _oled->drawText("preset", 0, 0);
+            int idx = g.namingCursor();
+            kana::toRomaji(kana::PRESETS[idx], buf, sizeof(buf));
+            // 中央寄せで現在の preset 名を表示
+            int width = std::strlen(buf) * 6;
+            int x = (128 - width) / 2;
+            if (x < 0) x = 0;
+            _oled->drawText(buf, x, 28);
+            std::snprintf(buf, sizeof(buf), "%d/%d", idx + 1, kana::PRESET_COUNT);
+            _oled->drawText(buf, 0, 16);
+            _oled->drawText("< L  R >  OK", 0, 56);
+            break;
+        }
+        case Game::NamingMode::INPUT_ROW: {
+            // 上段：現在の入力バッファ
+            char nbuf[16];
+            kana::toRomaji(g.inputBuffer(), nbuf, sizeof(nbuf));
+            std::snprintf(buf, sizeof(buf), "[%s_]", nbuf);
+            _oled->drawText(buf, 0, 0);
+            // 中段：行を選ぶ
+            int cur = g.namingCursor();
+            const int total = kana::ROW_COUNT + 2;   // + BS + OK
+            const char* label;
+            if (cur < kana::ROW_COUNT)              label = kana::ROWS[cur].label;
+            else if (cur == kana::ROW_COUNT)        label = "BS";
+            else                                    label = "OK";
+            int width = std::strlen(label) * 6;
+            int x = (128 - width) / 2;
+            if (x < 0) x = 0;
+            _oled->fillRect(x - 2, 26, width + 4, 12, true);
+            _oled->drawText(label, x, 28, true);
+            std::snprintf(buf, sizeof(buf), "%d/%d", cur + 1, total);
+            _oled->drawText(buf, 0, 44);
+            _oled->drawText("< L  R >  OK", 0, 56);
+            break;
+        }
+        case Game::NamingMode::INPUT_CHAR: {
+            char nbuf[16];
+            kana::toRomaji(g.inputBuffer(), nbuf, sizeof(nbuf));
+            std::snprintf(buf, sizeof(buf), "[%s_]", nbuf);
+            _oled->drawText(buf, 0, 0);
+            const auto& row = kana::ROWS[g.inputRow()];
+            int cur = g.namingCursor();
+            uint8_t kanaIdx = uint8_t(row.start + cur);
+            const char* romaji = (kanaIdx < kana::COUNT) ? kana::TABLE[kanaIdx].romaji : "?";
+            int width = std::strlen(romaji) * 6;
+            int x = (128 - width) / 2;
+            if (x < 0) x = 0;
+            _oled->fillRect(x - 2, 26, width + 4, 12, true);
+            _oled->drawText(romaji, x, 28, true);
+            std::snprintf(buf, sizeof(buf), "%s row %d/%d", row.label, cur + 1, row.length);
+            _oled->drawText(buf, 0, 44);
+            _oled->drawText("< L  R >  OK", 0, 56);
+            break;
+        }
+    }
 }
 
 void Display::drawWool(int wool, int sx) {

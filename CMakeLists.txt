@@ -17,6 +17,7 @@ add_executable(mokoji
     save.cpp
     ssd1306.cpp
     font.cpp
+    kana.cpp
 )
 
 target_link_libraries(mokoji

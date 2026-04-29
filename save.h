@@ -1,7 +1,8 @@
 #pragma once
 #include <cstdint>
 
-constexpr int MAX_GRAVES = 50;     // FIFO で古い墓から削除
+constexpr int MAX_GRAVES        = 50;     // FIFO で古い墓から削除
+constexpr int SAVE_NAME_KANA_LEN = 5;     // ひらがな最大 4 字 + END 終端
 
 // 死因（お墓メッセージの分岐用）
 namespace DeathCauseValue {
@@ -10,18 +11,20 @@ namespace DeathCauseValue {
 }
 
 struct GraveRecord {
-    char     name[8];
+    char     name[8];                          // 名前の romaji 表示（display 互換）
+    uint8_t  name_kana[SAVE_NAME_KANA_LEN];    // 名前のひらがな index 列（kana::END 終端）
     char     breed[16];
-    uint8_t  age_days;             // 寿命 max 15 なので uint8_t で十分
-    uint8_t  death_cause;          // DeathCauseValue::STATUS or AGE
+    uint8_t  age_days;                         // 寿命 max 15 なので uint8_t で十分
+    uint8_t  death_cause;                      // DeathCauseValue::STATUS or AGE
 };
 
 // フラッシュに書き込むセーブデータ。サイズが変わったら MAGIC を変えて互換性を切る。
 struct GameSaveData {
-    static constexpr uint32_t MAGIC = 0x4D4F4B32;  // 'MOK2'（MAX_GRAVES=50 + death_cause 追加で MOK1 から bump）
+    static constexpr uint32_t MAGIC = 0x4D4F4B33;  // 'MOK3'（name_kana 追加で MOK2 から bump）
 
     uint32_t magic;
-    char     name[8];
+    char     name[8];                          // 名前 romaji（display 互換）
+    uint8_t  name_kana[SAVE_NAME_KANA_LEN];    // 名前ひらがな index 列
     uint8_t  stage;          // Game::Stage の生値
     uint8_t  breed;          // Game::Breed の生値
     uint8_t  sheep_type;     // Game::SheepType の生値

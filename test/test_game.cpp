@@ -27,17 +27,65 @@ static void menu_action(Game& g, int idx) {
     g.onButton(Game::Button::CENTER);              // 確定 → main
 }
 
+// 命名画面をデフォルト（preset 0 = もこ）でスキップして main へ移動する。
+// 新規 Game / die() 後など Screen::NAMING に居るときに main 操作を始める前に呼ぶ。
+static void skip_naming(Game& g) {
+    if (g.screen() != Game::Screen::NAMING) return;
+    g.onButton(Game::Button::CENTER);   // SELECT_MODE → PRESET_PICK
+    g.onButton(Game::Button::CENTER);   // PRESET_PICK confirm → MAIN
+}
+
 static void test_default_state() {
     Game g(nullptr);
-    assert(std::strcmp(g.name(), "MOKO") == 0);
+    // 新規 Game はまず命名画面で開始する
+    assert(g.screen() == Game::Screen::NAMING);
+    // デフォルトのかな名は preset 0 「もこ」、romaji 表示は "moko"
+    assert(std::strcmp(g.name(), "moko") == 0);
     assert(g.hunger() == 100);
     assert(g.happy()  == 100);
     assert(g.wool()   == 0);
     assert(g.stage()  == Game::Stage::LAMB);
     assert(g.breed()  == Game::Breed::NONE);
-    assert(g.screen() == Game::Screen::MAIN);
     assert(g.graveCount() == 0);
     assert(!g.sleeping());
+}
+
+static void test_naming_preset_select() {
+    Game g(nullptr);
+    assert(g.screen() == Game::Screen::NAMING);
+    // SELECT_MODE で center → PRESET_PICK へ
+    g.onButton(Game::Button::CENTER);
+    assert(g.namingMode() == Game::NamingMode::PRESET_PICK);
+    // 右に 1 つ進めて preset 1 (ふわ)
+    g.onButton(Game::Button::RIGHT);
+    assert(g.namingCursor() == 1);
+    // center で確定 → MAIN
+    g.onButton(Game::Button::CENTER);
+    assert(g.screen() == Game::Screen::MAIN);
+    // 名前が "fuwa" に
+    assert(std::strcmp(g.name(), "fuwa") == 0);
+}
+
+static void test_naming_manual_input() {
+    Game g(nullptr);
+    // SELECT_MODE で右→ TYPE 選択 → INPUT_ROW へ
+    g.onButton(Game::Button::RIGHT);
+    g.onButton(Game::Button::CENTER);
+    assert(g.namingMode() == Game::NamingMode::INPUT_ROW);
+    // ま行 (index 6) へ移動
+    for (int i = 0; i < 6; ++i) g.onButton(Game::Button::RIGHT);
+    assert(g.namingCursor() == 6);
+    g.onButton(Game::Button::CENTER);
+    assert(g.namingMode() == Game::NamingMode::INPUT_CHAR);
+    // ま (cursor 0) を確定
+    g.onButton(Game::Button::CENTER);
+    assert(g.namingMode() == Game::NamingMode::INPUT_ROW);
+    assert(g.inputLen() == 1);
+    // OK (= ROW_COUNT + 1) まで cursor を進めて確定
+    while (g.namingCursor() < 17) g.onButton(Game::Button::RIGHT);
+    g.onButton(Game::Button::CENTER);
+    assert(g.screen() == Game::Screen::MAIN);
+    assert(std::strcmp(g.name(), "ma") == 0);
 }
 
 static void test_tick_advances_age() {
@@ -60,6 +108,7 @@ static void test_hunger_decays_after_three_hours() {
 
 static void test_natural_death_within_lifespan_window() {
     Game g(nullptr);
+    skip_naming(g);
     int initial = g.graveCount();
     // 20 日相当 tick（寿命 10-15 日 + マージン）。途中で死なないように feed/pet。
     uint32_t budget = Game::TICKS_PER_DAY * 20;
@@ -77,6 +126,7 @@ static void test_natural_death_within_lifespan_window() {
 
 static void test_starvation_marked_as_status_death() {
     Game g(nullptr);
+    skip_naming(g);
     int initial = g.graveCount();
     // feed しないので空腹で死ぬはず（300 game-hour ≒ 12.5 日、寿命 10-15 日と
     // ほぼ同じレンジに居るので run によっては寿命死に勝つことがある）
@@ -90,6 +140,7 @@ static void test_starvation_marked_as_status_death() {
 
 static void test_feed_via_menu() {
     Game g(nullptr);
+    skip_naming(g);
     // hunger を下げておく（30 game-hour 経過）
     for (uint32_t i = 0; i < 30 * Game::TICKS_PER_HOUR; ++i) g.tick();
     int before = g.hunger();
@@ -109,6 +160,7 @@ static void test_feed_via_menu() {
 
 static void test_evolution_to_young() {
     Game g(nullptr);
+    skip_naming(g);
     // 3 days 強までゲームを進める。途中で死なないように適宜 feed/pet。
     uint32_t budget = Game::TICKS_PER_DAY * 5;
     while (g.stage() == Game::Stage::LAMB && g.ageTicks() < budget) {
@@ -125,6 +177,7 @@ static void test_evolution_to_young() {
 
 static void test_evolution_to_adult() {
     Game g(nullptr);
+    skip_naming(g);
     uint32_t budget = Game::TICKS_PER_DAY * 10;
     while (g.stage() != Game::Stage::ADULT && g.ageTicks() < budget) {
         g.tick();
@@ -137,6 +190,7 @@ static void test_evolution_to_adult() {
 
 static void test_death_increments_graves_and_preserves_them() {
     Game g(nullptr);
+    skip_naming(g);
     int initial = g.graveCount();
 
     // 餓死（300 game-hour で hunger 0）または寿命到達（最大 15 日 = 360 game-hour）の
@@ -145,8 +199,8 @@ static void test_death_increments_graves_and_preserves_them() {
     while (g.graveCount() == initial && safety--) g.tick();
     assert(g.graveCount() == initial + 1);
 
-    // _new_game が走った後でも MOKO に戻り、stage=lamb で再スタート
-    assert(std::strcmp(g.name(), "MOKO") == 0);
+    // newGame の後はデフォルト名 "moko"（プリセット 0 由来）で再スタート
+    assert(std::strcmp(g.name(), "moko") == 0);
     assert(g.stage() == Game::Stage::LAMB);
 
     // もう 1 回殺して、墓が累積することを確認（Python 版にあった
@@ -158,7 +212,8 @@ static void test_death_increments_graves_and_preserves_them() {
 
 static void test_dirty_flag_lifecycle() {
     Game g(nullptr);
-    // 新規ゲームは初回保存を促すために dirty=true で始まる
+    skip_naming(g);
+    // 命名直後は commitName() で dirty=true
     assert(g.isDirty());
     g.clearDirty();
     assert(!g.isDirty());
@@ -180,6 +235,7 @@ static void test_dirty_flag_lifecycle() {
 
 static void test_save_and_load_round_trip() {
     Game g1(nullptr);
+    skip_naming(g1);
     // 状態を変化させる
     for (uint32_t i = 0; i < 5 * Game::TICKS_PER_HOUR; ++i) g1.tick();
     g1.onButton(Game::Button::CENTER);
@@ -205,6 +261,8 @@ int main() {
     std::fprintf(stderr, "\n=== game.cpp host tests (HOST_TEST=on) ===\n\n");
 
     RUN(test_default_state);
+    RUN(test_naming_preset_select);
+    RUN(test_naming_manual_input);
     RUN(test_tick_advances_age);
     RUN(test_hunger_decays_after_three_hours);
     RUN(test_feed_via_menu);

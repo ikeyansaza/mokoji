@@ -1,5 +1,6 @@
 #include "game.h"
 #include "sound.h"
+#include "kana.h"
 #include "pico/rand.h"
 #include <cstring>
 #include <algorithm>
@@ -79,16 +80,20 @@ Game::Game(Sound* sound, const GameSaveData* data)
             // 旧 magic からマイグレートされた場合は新規に乱数で割り当て
             _lifespan_days = uint8_t(LIFESPAN_MIN + (get_rand_32() % LIFESPAN_RANGE));
         }
+        std::memcpy(_name_kana, data->name_kana, sizeof(_name_kana));
         _dirty = false;   // フラッシュ上の内容と一致しているので clean
     } else {
         newGame();        // newGame 側で _dirty = true される
+        // セーブが無い＝最初の起動なので名前を付けてもらう画面に入る
+        startNaming();
     }
 }
 
 void Game::newGame() {
     // 注意：_grave_count / _graves はリセットしない（過去の墓を保持）
-    std::strncpy(_name, "MOKO", sizeof(_name) - 1);
-    _name[sizeof(_name) - 1] = '\0';
+    // 名前は最初のプリセット「もこ」(index 34, 9) をデフォルトに
+    for (int i = 0; i < 5; ++i) _name_kana[i] = kana::PRESETS[0][i];
+    deriveRomajiName();
     _stage      = Stage::LAMB;
     _breed      = Breed::NONE;
     _sheep_type = SheepType::NONE;
@@ -237,8 +242,11 @@ void Game::onButton(Button btn) {
             }
             break;
         case Screen::GRAVE:
-            // Python 版にあったデッドエンドを修正：どのボタンでも main に戻る
-            _screen = Screen::MAIN;
+            // 墓を確認したら新しい子に名前を付ける
+            startNaming();
+            break;
+        case Screen::NAMING:
+            handleNamingButton(btn);
             break;
     }
 }
@@ -332,6 +340,7 @@ void Game::evolveAdult() {
 void Game::die(DeathCause cause) {
     GraveRecord rec{};
     std::memcpy(rec.name, _name, sizeof(rec.name));
+    std::memcpy(rec.name_kana, _name_kana, sizeof(rec.name_kana));
     const char* slug = (_breed != Breed::NONE) ? breedSlug(_breed) : "??";
     std::strncpy(rec.breed, slug, sizeof(rec.breed) - 1);
     rec.breed[sizeof(rec.breed) - 1] = '\0';
@@ -368,8 +377,119 @@ GameSaveData Game::saveData() const {
     d.tend_shear = int16_t(_tend_shear);
     d.grave_count = uint8_t(_grave_count);
     d.lifespan_days = _lifespan_days;
+    std::memcpy(d.name_kana, _name_kana, sizeof(d.name_kana));
     for (int i = 0; i < _grave_count && i < MAX_GRAVES; ++i) {
         d.graves[i] = _graves[i];
     }
     return d;
+}
+
+// ====================================================================
+// 命名画面まわり
+// ====================================================================
+
+void Game::deriveRomajiName() {
+    // _name_kana から _name (romaji) を再生成
+    kana::toRomaji(_name_kana, _name, sizeof(_name));
+}
+
+void Game::startNaming() {
+    _screen = Screen::NAMING;
+    _naming_mode = NamingMode::SELECT_MODE;
+    _naming_cursor = 0;
+    _input_row = 0;
+    _input_len = 0;
+    for (int i = 0; i < 5; ++i) _input_buffer[i] = kana::END;
+}
+
+void Game::commitName() {
+    // _input_buffer の長さを確定（END 終端を入れる）
+    if (_input_len < 4) _input_buffer[_input_len] = kana::END;
+    // 全部空なら確定しない
+    if (_input_buffer[0] == kana::END) return;
+
+    std::memcpy(_name_kana, _input_buffer, sizeof(_name_kana));
+    deriveRomajiName();
+    _screen = Screen::MAIN;
+    _dirty = true;
+}
+
+void Game::handleNamingButton(Button btn) {
+    switch (_naming_mode) {
+        case NamingMode::SELECT_MODE: {
+            // [PRESET] / [TYPE] のトグル
+            if (btn == Button::LEFT)        _naming_cursor = 0;
+            else if (btn == Button::RIGHT)  _naming_cursor = 1;
+            else if (btn == Button::CENTER) {
+                if (_naming_cursor == 0) {
+                    _naming_mode = NamingMode::PRESET_PICK;
+                    _naming_cursor = 0;
+                } else {
+                    _naming_mode = NamingMode::INPUT_ROW;
+                    _naming_cursor = 0;
+                    _input_len = 0;
+                    for (int i = 0; i < 5; ++i) _input_buffer[i] = kana::END;
+                }
+            }
+            break;
+        }
+        case NamingMode::PRESET_PICK: {
+            if (btn == Button::LEFT)
+                _naming_cursor = (_naming_cursor - 1 + kana::PRESET_COUNT) % kana::PRESET_COUNT;
+            else if (btn == Button::RIGHT)
+                _naming_cursor = (_naming_cursor + 1) % kana::PRESET_COUNT;
+            else if (btn == Button::CENTER) {
+                std::memcpy(_input_buffer, kana::PRESETS[_naming_cursor], 5);
+                // _input_len はプリセットの実長（END まで数える）
+                _input_len = 0;
+                for (int i = 0; i < 4; ++i) {
+                    if (_input_buffer[i] == kana::END) break;
+                    ++_input_len;
+                }
+                commitName();
+            }
+            break;
+        }
+        case NamingMode::INPUT_ROW: {
+            // ROW_COUNT 行 + BS + OK = ROW_COUNT + 2
+            const int total = kana::ROW_COUNT + 2;
+            if (btn == Button::LEFT)
+                _naming_cursor = (_naming_cursor - 1 + total) % total;
+            else if (btn == Button::RIGHT)
+                _naming_cursor = (_naming_cursor + 1) % total;
+            else if (btn == Button::CENTER) {
+                if (_naming_cursor < kana::ROW_COUNT) {
+                    _input_row = _naming_cursor;
+                    _naming_mode = NamingMode::INPUT_CHAR;
+                    _naming_cursor = 0;
+                } else if (_naming_cursor == kana::ROW_COUNT) {
+                    // BS：1 文字削除
+                    if (_input_len > 0) {
+                        _input_len -= 1;
+                        _input_buffer[_input_len] = kana::END;
+                    }
+                } else {
+                    // OK：確定
+                    commitName();
+                }
+            }
+            break;
+        }
+        case NamingMode::INPUT_CHAR: {
+            const auto& row = kana::ROWS[_input_row];
+            if (btn == Button::LEFT)
+                _naming_cursor = (_naming_cursor - 1 + row.length) % row.length;
+            else if (btn == Button::RIGHT)
+                _naming_cursor = (_naming_cursor + 1) % row.length;
+            else if (btn == Button::CENTER) {
+                if (_input_len < 4) {
+                    _input_buffer[_input_len++] = uint8_t(row.start + _naming_cursor);
+                    if (_input_len < 4) _input_buffer[_input_len] = kana::END;
+                }
+                _naming_mode = NamingMode::INPUT_ROW;
+                _naming_cursor = 0;
+            }
+            break;
+        }
+    }
 }

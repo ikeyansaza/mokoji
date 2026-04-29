@@ -14,6 +14,7 @@ private:
     void drawMenu(const Game& g);
     void drawSleep(const Game& g);
     void drawGrave(const Game& g);
+    void drawNaming(const Game& g);
 
     // 24x24 スプライト [24][3] のポインタを返す。
     const uint8_t (*selectSprite(const Game& g, Game::Face faceOverride))[3];
