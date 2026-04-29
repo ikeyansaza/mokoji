@@ -6,10 +6,10 @@
 import sprites
 
 MENU_LABELS = {
-    'feed':  'えさ',
-    'pet':   'なでる',
-    'shear': '毛刈り',
-    'mini':  'ゲーム',
+    'feed':  'EAT',
+    'pet':   'PET',
+    'shear': 'CUT',
+    'mini':  'FUN',
 }
 
 class Display:
@@ -37,7 +37,7 @@ class Display:
         hunger_bars = state['hunger'] // 20  # 0-5
         happy_bars  = state['happy']  // 20
         self.oled.text('H:' + '|' * hunger_bars + '.' * (5 - hunger_bars), 0, 0)
-        self.oled.text(state['name'], 100, 0)
+        self.oled.text(state['name'], 96, 0)
 
         # 羊スプライト
         sprite = self._get_sprite(state)

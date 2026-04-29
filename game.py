@@ -39,9 +39,10 @@ BREED_TENDENCY = {
 RARE_PROB = 5  # レア出現確率 (%)
 
 class Game:
-    def __init__(self, data=None):
+    def __init__(self, data=None, sound=None):
+        self._sound = sound
         if data:
-            self.name       = data.get('name', 'もこ')
+            self.name       = data.get('name', 'Moko')
             self.breed      = data.get('breed', None)
             self.stage      = data.get('stage', 'lamb')
             self.sheep_type = data.get('sheep_type', None)
@@ -69,7 +70,7 @@ class Game:
         self._screen      = 'main'  # main / menu / minigame / grave
 
     def _new_game(self):
-        self.name       = 'もこ'
+        self.name       = 'Moko'
         self.breed      = None
         self.stage      = 'lamb'
         self.sheep_type = None
@@ -176,18 +177,24 @@ class Game:
             self.hunger = min(100, self.hunger + 30)
             self.tendency['feed'] += 1
             self._action = 'feed'
+            if self._sound: self._sound.mog()
         elif action == 'pet':
             self.happy = min(100, self.happy + 20)
             self.tendency['pet'] += 1
             self._action = 'pet'
+            if self._sound: self._sound.mee()
         elif action == 'shear':
             if self.wool > 10:
                 self.wool = 0
                 self.happy = min(100, self.happy + 10)
                 self.tendency['shear'] += 1
                 self._action = 'shear'
+                if self._sound: self._sound.joki()
         elif action == 'mini':
-            self._screen = 'minigame'
+            # ミニゲーム未実装。仮で happy +5 とハッピー音だけ返す
+            self.happy = min(100, self.happy + 5)
+            self._action = 'mini'
+            if self._sound: self._sound.happy()
         self._walk_tick = 0
 
     # --------------------------------------------------------
@@ -198,6 +205,7 @@ class Game:
         if urandom.getrandbits(7) < RARE_PROB:
             self.stage = 'young_rare'
             self.sheep_type = 'rare'
+            if self._sound: self._sound.happy()
             return
 
         # 傾向スコアで重み調整
@@ -216,6 +224,7 @@ class Game:
         else:
             self.stage = 'young_sura'
             self.sheep_type = 'sura'
+        if self._sound: self._sound.happy()
 
     def _evolve_to_adult(self):
         t = self.sheep_type
@@ -238,6 +247,7 @@ class Game:
             self.breed = 'eastfriesian'
 
         self.stage = 'adult'
+        if self._sound: self._sound.happy()
 
     # --------------------------------------------------------
     # 死亡・お墓

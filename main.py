@@ -23,7 +23,7 @@ BTN_RIGHT  = Pin(12, Pin.IN, Pin.PULL_UP)
 save    = Save()
 sound   = Sound(pin=15)
 disp    = Display(oled)
-game    = Game(save.load())
+game    = Game(save.load(), sound=sound)
 
 # --- メインループ ---
 TICK_MS = 50  # 約20fps
