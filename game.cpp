@@ -47,6 +47,8 @@ Game::Game(Sound* sound, const GameSaveData* data)
     _action      = Action::NONE;
     _screen      = Screen::MAIN;
     _menu_cursor = 0;
+    _walk_state  = WalkState::WALK;
+    _walk_state_remaining = 80;   // 起動直後 4 秒は歩く
 
     if (data && data->magic == GameSaveData::MAGIC) {
         memcpy(_name, data->name, sizeof(_name));
@@ -138,16 +140,57 @@ void Game::tick() {
 
 void Game::updateWalk() {
     _walk_tick += 1;
+
+    // メニューからのアクション中は正面を向いて固定
     if (_action != Action::NONE) {
         _face = Face::FRONT;
-        if (_walk_tick > 40) {
-            _action = Action::NONE;
+        if (_walk_tick > 40) _action = Action::NONE;
+        return;
+    }
+
+    // アイドル状態の残り時間を消化、切れたら次の状態を抽選
+    _walk_state_remaining -= 1;
+    if (_walk_state_remaining <= 0) {
+        uint32_t r = get_rand_32() % 100;
+        if (r < 30) {
+            // 30%: 立ち止まる（1-3 秒）
+            _walk_state = WalkState::PAUSE;
+            _walk_state_remaining = 20 + int(get_rand_32() % 40);
+        } else if (r < 45) {
+            // 15%: 周りを見回す（3 秒、左→正面→右→正面）
+            _walk_state = WalkState::LOOK;
+            _walk_state_remaining = 60;
+        } else {
+            // 55%: 歩く（2-6 秒）。確率で進行方向を反転、左右の壁感を弱める。
+            _walk_state = WalkState::WALK;
+            _walk_state_remaining = 40 + int(get_rand_32() % 80);
+            if (r < 60) _walk_dir = -_walk_dir;
         }
-    } else if (_walk_tick % 3 == 0) {
-        _walk_x += _walk_dir;
-        _face = (_walk_dir > 0) ? Face::RIGHT : Face::LEFT;
-        if      (_walk_x > WALK_RIGHT) _walk_dir = -1;
-        else if (_walk_x < WALK_LEFT)  _walk_dir =  1;
+    }
+
+    switch (_walk_state) {
+        case WalkState::WALK:
+            if (_walk_tick % 3 == 0) {
+                _walk_x += _walk_dir;
+                _face = (_walk_dir > 0) ? Face::RIGHT : Face::LEFT;
+                if      (_walk_x > WALK_RIGHT) _walk_dir = -1;
+                else if (_walk_x < WALK_LEFT)  _walk_dir =  1;
+            }
+            break;
+        case WalkState::PAUSE:
+            _face = Face::FRONT;
+            break;
+        case WalkState::LOOK: {
+            // 残り時間 60→0 を 4 段階（15 tick ずつ）に切って首振り
+            int phase = (60 - _walk_state_remaining) / 15;
+            switch (phase) {
+                case 0:  _face = Face::LEFT;  break;
+                case 1:  _face = Face::FRONT; break;
+                case 2:  _face = Face::RIGHT; break;
+                default: _face = Face::FRONT; break;
+            }
+            break;
+        }
     }
 }
 

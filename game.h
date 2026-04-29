@@ -84,6 +84,11 @@ private:
     Face       _face;
     Action     _action;
 
+    // 「うろうろ」のアイドル状態機械（描画用、save 不要）
+    enum class WalkState : uint8_t { WALK, PAUSE, LOOK };
+    WalkState  _walk_state;
+    int        _walk_state_remaining;
+
     Screen     _screen;
     int        _menu_cursor;
 
