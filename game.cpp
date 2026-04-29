@@ -227,6 +227,24 @@ void Game::updateWalk() {
 void Game::onButton(Button btn) {
     if (_sleeping) return;
 
+    // LEFT_LONG はバックスペース専用イベント。NAMING の入力中以外は無視。
+    if (btn == Button::LEFT_LONG) {
+        if (_screen == Screen::NAMING &&
+            (_naming_mode == NamingMode::INPUT_ROW ||
+             _naming_mode == NamingMode::INPUT_CHAR)) {
+            if (_input_len > 0) {
+                _input_len -= 1;
+                _input_buffer[_input_len] = kana::END;
+            }
+            // INPUT_CHAR 中なら row 選択に戻す
+            if (_naming_mode == NamingMode::INPUT_CHAR) {
+                _naming_mode = NamingMode::INPUT_ROW;
+                _naming_cursor = 0;
+            }
+        }
+        return;
+    }
+
     switch (_screen) {
         case Screen::MAIN:
             if (btn == Button::CENTER) _screen = Screen::MENU;

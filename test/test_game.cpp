@@ -66,6 +66,21 @@ static void test_naming_preset_select() {
     assert(std::strcmp(g.name(), "fuwa") == 0);
 }
 
+static void test_naming_long_press_backspace() {
+    Game g(nullptr);
+    // INPUT_ROW へ：select right→ TYPE → enter
+    g.onButton(Game::Button::RIGHT);
+    g.onButton(Game::Button::CENTER);
+    // ま行 → ま を入力
+    for (int i = 0; i < 6; ++i) g.onButton(Game::Button::RIGHT);
+    g.onButton(Game::Button::CENTER);  // INPUT_CHAR
+    g.onButton(Game::Button::CENTER);  // 「ま」確定
+    assert(g.inputLen() == 1);
+    // INPUT_ROW に戻ったところで LEFT_LONG → 1 文字削除
+    g.onButton(Game::Button::LEFT_LONG);
+    assert(g.inputLen() == 0);
+}
+
 static void test_naming_manual_input() {
     Game g(nullptr);
     // SELECT_MODE で右→ TYPE 選択 → INPUT_ROW へ
@@ -263,6 +278,7 @@ int main() {
     RUN(test_default_state);
     RUN(test_naming_preset_select);
     RUN(test_naming_manual_input);
+    RUN(test_naming_long_press_backspace);
     RUN(test_tick_advances_age);
     RUN(test_hunger_decays_after_three_hours);
     RUN(test_feed_via_menu);

@@ -20,7 +20,7 @@ public:
     enum class Screen     : uint8_t { MAIN, MENU, GRAVE, NAMING };
     enum class Face       : uint8_t { LEFT, FRONT, RIGHT };
     enum class Action     : uint8_t { NONE, FEED, PET, SHEAR, MINI };
-    enum class Button     : uint8_t { LEFT, CENTER, RIGHT };
+    enum class Button     : uint8_t { LEFT, CENTER, RIGHT, LEFT_LONG };
     enum class NamingMode : uint8_t {
         SELECT_MODE,   // [PRESET] / [TYPE] のどちらかを選ぶ
         PRESET_PICK,   // プリセット 20 個を左右で wheel

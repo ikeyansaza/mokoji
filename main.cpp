@@ -21,6 +21,14 @@ constexpr uint32_t MIN_SAVE_INTERVAL_MS   = 30 * 1000;     // 30 秒
 // 状態が変わってなくても age_ticks 進行を捕まえるための強制セーブ間隔。
 // Pico フラッシュは ~100k 消去サイクル制限なので、30 分間隔なら 100k/(48/day) ≈ 5.7 年保つ。
 constexpr uint32_t FORCE_SAVE_INTERVAL_MS = 30 * 60 * 1000; // 30 分
+constexpr uint32_t LONG_PRESS_MS          = 500;           // 長押しと判定する閾値
+
+// ボタン状態（press 検出 + 長押し検出）
+struct ButtonState {
+    bool     pressed       = false;
+    uint32_t press_start_ms = 0;
+    bool     long_fired    = false;
+};
 }  // namespace
 
 static void setupButton(uint pin) {
@@ -54,13 +62,32 @@ int main() {
 
     absolute_time_t last_save = get_absolute_time();
 
+    ButtonState bL, bC, bR;
+    auto poll_button = [&](uint pin, ButtonState& s, Game::Button btn,
+                           bool support_long, Game::Button long_btn) {
+        bool now_pressed = !gpio_get(pin);
+        uint32_t now_ms  = to_ms_since_boot(get_absolute_time());
+        if (now_pressed && !s.pressed) {
+            // 押下開始
+            s.press_start_ms = now_ms;
+            s.long_fired = false;
+            game.onButton(btn);
+        } else if (now_pressed && s.pressed && support_long && !s.long_fired) {
+            if (now_ms - s.press_start_ms > LONG_PRESS_MS) {
+                game.onButton(long_btn);
+                s.long_fired = true;
+            }
+        }
+        s.pressed = now_pressed;
+    };
+
     while (true) {
         game.tick();
 
-        // ボタン処理（active LOW、簡易デバウンス）
-        if (!gpio_get(PIN_BTN_LEFT))   { game.onButton(Game::Button::LEFT);   sleep_ms(200); }
-        if (!gpio_get(PIN_BTN_CENTER)) { game.onButton(Game::Button::CENTER); sleep_ms(200); }
-        if (!gpio_get(PIN_BTN_RIGHT))  { game.onButton(Game::Button::RIGHT);  sleep_ms(200); }
+        // ボタン処理（active LOW、エッジ検出。50ms tick で簡易デバウンス）
+        poll_button(PIN_BTN_LEFT,   bL, Game::Button::LEFT,   true,  Game::Button::LEFT_LONG);
+        poll_button(PIN_BTN_CENTER, bC, Game::Button::CENTER, false, Game::Button::CENTER);
+        poll_button(PIN_BTN_RIGHT,  bR, Game::Button::RIGHT,  false, Game::Button::RIGHT);
 
         disp.draw(game);
         oled.show();
