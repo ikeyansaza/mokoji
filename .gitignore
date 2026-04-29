@@ -1,0 +1,17 @@
+# MicroPython
+*.pyc
+__pycache__/
+
+# セーブデータ（デバイス上のファイル、リポジトリには含めない）
+mokomoko_save.json
+mokoji_save.json
+
+# macOS
+.DS_Store
+
+# Thonny
+.thonny/
+
+# エディタ
+.vscode/
+*.swp
