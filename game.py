@@ -103,13 +103,13 @@ class Game:
             self.happy   = max(0, self.happy   - int(1 * rate))
             self.wool    = min(100, self.wool  + 2)
 
-        # 眠気の更新
-        hour = (self.age_ticks // self.TICKS_PER_HOUR) % 24
-        if 22 <= hour or hour < 6:
-            self.sleepy = min(100, self.sleepy + 1)
-        else:
-            if self.sleeping:
-                self.sleepy = max(0, self.sleepy - 2)
+            # 眠気の更新（hourly check 内：tick 単位で +1 されると起動 4 秒で就寝してしまうため）
+            hour = (self.age_ticks // self.TICKS_PER_HOUR) % 24
+            if 22 <= hour or hour < 6:
+                self.sleepy = min(100, self.sleepy + 1)
+            else:
+                if self.sleeping:
+                    self.sleepy = max(0, self.sleepy - 2)
 
         # 睡眠遷移
         if not self.sleeping and self.sleepy >= 80:
