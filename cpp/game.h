@@ -23,6 +23,15 @@ public:
     static const char*    menuLabel(int i);          // "EAT" / "PET" / "CUT" / "FUN"
     static const char*    breedSlug(Breed b);        // 短縮表記（4-5 文字）
 
+    // ゲーム内時間の刻み定数。DEBUG_FAST / HOST_TEST 時は短縮版に切り替わる。
+    // 公開しているのはホスト側ユニットテストや実機検証で参照するため。
+#if defined(DEBUG_FAST) || defined(HOST_TEST)
+    static constexpr uint32_t TICKS_PER_HOUR = 60u;                    // 1 game-hour = 3 sec real
+#else
+    static constexpr uint32_t TICKS_PER_HOUR = 20u * 60u * 60u;        // 1 game-hour = 1 hour real
+#endif
+    static constexpr uint32_t TICKS_PER_DAY  = TICKS_PER_HOUR * 24u;
+
     Game(Sound* sound, const GameSaveData* data = nullptr);
 
     void tick();
@@ -45,6 +54,7 @@ public:
     int       menuCursor()  const { return _menu_cursor; }
     int       graveCount()  const { return _grave_count; }
     const GraveRecord& grave(int i) const { return _graves[i]; }
+    uint32_t  ageTicks()    const { return _age_ticks; }   // テスト用
 
 private:
     char       _name[8];

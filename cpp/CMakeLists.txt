@@ -34,3 +34,10 @@ pico_enable_stdio_uart(mokoji 0)
 
 # .uf2 / .hex / .bin / .map / .dis を出力
 pico_add_extra_outputs(mokoji)
+
+# 実機での進化検証用：1 game-hour = 3 秒に短縮するモード
+option(DEBUG_FAST "Compress game time for hardware verification (3 sec / game-hour)" OFF)
+if(DEBUG_FAST)
+    target_compile_definitions(mokoji PRIVATE DEBUG_FAST=1)
+    message(STATUS "DEBUG_FAST=ON: 1 game-hour = 3 sec real, 1 day = 72 sec, evolution at ~3.6 min / ~8.4 min")
+endif()

@@ -5,8 +5,7 @@
 #include <algorithm>
 
 namespace {
-constexpr uint32_t TICKS_PER_HOUR = 20u * 60u * 60u;     // 50ms tick × 3600 = 1 時間
-constexpr uint32_t TICKS_PER_DAY  = TICKS_PER_HOUR * 24u;
+// TICKS_PER_HOUR / TICKS_PER_DAY は Game 側に公開した（テスト・DEBUG_FAST との整合のため）
 constexpr int      RARE_PROB      = 5;                   // %（実際は /128 ≒ 3.9%、Python 版と同条件）
 constexpr int      WALK_LEFT      = 10;
 constexpr int      WALK_RIGHT     = 90;
@@ -101,13 +100,16 @@ void Game::tick() {
         _hunger = std::max(0, _hunger - dec);
         _happy  = std::max(0, _happy  - dec);
         _wool   = std::min(100, _wool + 2);
-    }
 
-    int hour = (_age_ticks / TICKS_PER_HOUR) % 24;
-    if (hour >= 22 || hour < 6) {
-        _sleepy = std::min(100, _sleepy + 1);
-    } else if (_sleeping) {
-        _sleepy = std::max(0, _sleepy - 2);
+        // 睡眠度の更新も「ゲーム内 1 時間ごと」にゲートする。
+        // Python 版はこのゲートが無くて 50ms ごとに sleepy +1 されており、
+        // 起動 4 秒で就寝してしまう不具合があった。
+        int hour = (_age_ticks / TICKS_PER_HOUR) % 24;
+        if (hour >= 22 || hour < 6) {
+            _sleepy = std::min(100, _sleepy + 1);
+        } else if (_sleeping) {
+            _sleepy = std::max(0, _sleepy - 2);
+        }
     }
 
     if (!_sleeping && _sleepy >= 80) _sleeping = true;
