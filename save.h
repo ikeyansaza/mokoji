@@ -19,8 +19,10 @@ struct GraveRecord {
 };
 
 // フラッシュに書き込むセーブデータ。サイズが変わったら MAGIC を変えて互換性を切る。
+// 末尾の crc は load 時に検証されるので、部分書き込み（電源断中の write 失敗）は
+// CRC 不一致として検出され「セーブ無し」扱いになる。
 struct GameSaveData {
-    static constexpr uint32_t MAGIC = 0x4D4F4B33;  // 'MOK3'（name_kana 追加で MOK2 から bump）
+    static constexpr uint32_t MAGIC = 0x4D4F4B34;  // 'MOK4'（CRC 追加で MOK3 から bump）
 
     uint32_t magic;
     char     name[8];                          // 名前 romaji（display 互換）
@@ -40,6 +42,7 @@ struct GameSaveData {
     int16_t  tend_shear;
     uint8_t  grave_count;
     GraveRecord graves[MAX_GRAVES];
+    uint32_t crc;            // 上記全フィールドを対象とした CRC32（load 時検証）
 };
 
 // フラッシュ末尾の 4KB セクタにデータを保存する。

@@ -22,12 +22,14 @@ constexpr uint32_t MIN_SAVE_INTERVAL_MS   = 30 * 1000;     // 30 秒
 // Pico フラッシュは ~100k 消去サイクル制限なので、30 分間隔なら 100k/(48/day) ≈ 5.7 年保つ。
 constexpr uint32_t FORCE_SAVE_INTERVAL_MS = 30 * 60 * 1000; // 30 分
 constexpr uint32_t LONG_PRESS_MS          = 500;           // 長押しと判定する閾値
+constexpr uint32_t DEBOUNCE_MS            = 30;            // チャタリング除去の最小間隔
 
-// ボタン状態（press 検出 + 長押し検出）
+// ボタン状態（press 検出 + 長押し検出 + デバウンス）
 struct ButtonState {
-    bool     pressed       = false;
-    uint32_t press_start_ms = 0;
-    bool     long_fired    = false;
+    bool     pressed         = false;
+    uint32_t press_start_ms  = 0;
+    uint32_t last_change_ms  = 0;
+    bool     long_fired      = false;
 };
 }  // namespace
 
@@ -67,18 +69,29 @@ int main() {
                            bool support_long, Game::Button long_btn) {
         bool now_pressed = !gpio_get(pin);
         uint32_t now_ms  = to_ms_since_boot(get_absolute_time());
+
+        // チャタリング対策：状態変化は前回変化から DEBOUNCE_MS 以上経過したものだけ採用
+        if (now_pressed != s.pressed && (now_ms - s.last_change_ms) < DEBOUNCE_MS) {
+            return;
+        }
+
         if (now_pressed && !s.pressed) {
             // 押下開始
             s.press_start_ms = now_ms;
+            s.last_change_ms = now_ms;
             s.long_fired = false;
+            s.pressed = true;
             game.onButton(btn);
+        } else if (!now_pressed && s.pressed) {
+            // 離した
+            s.last_change_ms = now_ms;
+            s.pressed = false;
         } else if (now_pressed && s.pressed && support_long && !s.long_fired) {
             if (now_ms - s.press_start_ms > LONG_PRESS_MS) {
                 game.onButton(long_btn);
                 s.long_fired = true;
             }
         }
-        s.pressed = now_pressed;
     };
 
     while (true) {

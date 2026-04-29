@@ -60,9 +60,14 @@ void Display::drawMenu(const Game& g) {
 }
 
 void Display::drawSleep(const Game& g) {
+    // 焼き付き対策：スプライトと "zzz..." を ~8 秒周期で ±2px ドリフトさせる。
+    // 同じピクセルを長時間光らせ続けないようにするだけで、OLED の劣化を遅らせられる。
+    static constexpr int8_t kDrift[8] = { 0, 1, 2, 1, 0, -1, -2, -1 };
+    int dx = kDrift[(g.ageTicks() / 20) & 7];   // 20 tick = 1 sec @ 50ms tick
+
     auto sprite = selectSprite(g, Game::Face::FRONT);
-    _oled->drawSprite(sprite, 52, 20);
-    _oled->drawText("zzz...", 56, 48);
+    _oled->drawSprite(sprite, 52 + dx, 20);
+    _oled->drawText("zzz...", 56 + dx, 48);
 }
 
 void Display::drawGrave(const Game& g) {
