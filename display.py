@@ -77,7 +77,7 @@ class Display:
         for y in range(0, 64, 2):
             for x in range(0, 128, 2):
                 self.oled.pixel(x, y, 0)
-        sprite = sprites.LAMB_FRONT  # とりあえず子羊正面で代用
+        sprite = sprites.LAMB_F  # とりあえず子羊正面で代用
         self._draw_sprite(sprite, 52, 20)
         self.oled.text('zzz...', 56, 48)
 

@@ -5,7 +5,7 @@
 
 import ujson
 
-SAVE_PATH = '/mokomoko_save.json'
+SAVE_PATH = '/mokoji_save.json'
 
 
 class Save:
