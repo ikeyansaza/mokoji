@@ -47,11 +47,30 @@ static void test_tick_advances_age() {
     assert(g.ageTicks() == a0 + 3);
 }
 
-static void test_hunger_decays_after_one_hour() {
+static void test_hunger_decays_after_three_hours() {
     Game g(nullptr);
     int h0 = g.hunger();
+    // 1 game-hour: まだ 0 のまま
     for (uint32_t i = 0; i < Game::TICKS_PER_HOUR; ++i) g.tick();
+    assert(g.hunger() == h0);
+    // さらに 2 game-hour 進めて 3 game-hour 経過：-1
+    for (uint32_t i = 0; i < 2 * Game::TICKS_PER_HOUR; ++i) g.tick();
     assert(g.hunger() == h0 - 1);
+}
+
+static void test_natural_death_within_lifespan_window() {
+    Game g(nullptr);
+    int initial = g.graveCount();
+    // 20 日相当 tick（寿命 10-15 日 + マージン）。途中で死なないように feed/pet。
+    uint32_t budget = Game::TICKS_PER_DAY * 20;
+    while (g.graveCount() == initial && g.ageTicks() < budget) {
+        g.tick();
+        if (g.hunger() < 50) menu_action(g, 0);
+        if (g.happy()  < 50) menu_action(g, 1);
+    }
+    assert(g.graveCount() == initial + 1);
+    int age_days = g.grave(initial).age_days;
+    assert(age_days >= 10 && age_days <= 15);
 }
 
 static void test_feed_via_menu() {
@@ -105,8 +124,9 @@ static void test_death_increments_graves_and_preserves_them() {
     Game g(nullptr);
     int initial = g.graveCount();
 
-    // 餓死させる：feed しなければ ~100 game-hour で hunger 0
-    uint32_t safety = 200 * Game::TICKS_PER_HOUR;
+    // 餓死（300 game-hour で hunger 0）または寿命到達（最大 15 日 = 360 game-hour）の
+    // 早い方で死亡する。budget は両方マージン込みで 500 game-hour 取る。
+    uint32_t safety = 500 * Game::TICKS_PER_HOUR;
     while (g.graveCount() == initial && safety--) g.tick();
     assert(g.graveCount() == initial + 1);
 
@@ -116,7 +136,7 @@ static void test_death_increments_graves_and_preserves_them() {
 
     // もう 1 回殺して、墓が累積することを確認（Python 版にあった
     // 「_new_game で graves=[] してしまうバグ」が C++ では直っていることの検証）
-    safety = 200 * Game::TICKS_PER_HOUR;
+    safety = 500 * Game::TICKS_PER_HOUR;
     while (g.graveCount() == initial + 1 && safety--) g.tick();
     assert(g.graveCount() == initial + 2);
 }
@@ -171,11 +191,12 @@ int main() {
 
     RUN(test_default_state);
     RUN(test_tick_advances_age);
-    RUN(test_hunger_decays_after_one_hour);
+    RUN(test_hunger_decays_after_three_hours);
     RUN(test_feed_via_menu);
     RUN(test_evolution_to_young);
     RUN(test_evolution_to_adult);
     RUN(test_death_increments_graves_and_preserves_them);
+    RUN(test_natural_death_within_lifespan_window);
     RUN(test_dirty_flag_lifecycle);
     RUN(test_save_and_load_round_trip);
 

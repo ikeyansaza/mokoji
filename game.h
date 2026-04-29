@@ -75,6 +75,7 @@ private:
     int        _tend_pet;
     int        _tend_shear;
     bool       _sleeping;
+    uint8_t    _lifespan_days;   // 10-15 日のランダム個体寿命（自然死の上限）
 
     Sound*     _sound;
 

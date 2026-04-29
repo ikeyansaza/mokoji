@@ -9,6 +9,10 @@ namespace {
 constexpr int      RARE_PROB      = 5;                   // %（実際は /128 ≒ 3.9%、Python 版と同条件）
 constexpr int      WALK_LEFT      = 10;
 constexpr int      WALK_RIGHT     = 90;
+constexpr int      DECAY_HOURS    = 3;                   // 空腹/幸福の減少間隔（game-hour）
+constexpr int      START_HOUR     = 8;                   // 起動時のゲーム内時刻（朝 8 時）→ 即就寝を防ぐ
+constexpr int      LIFESPAN_MIN   = 10;                  // 自然死 寿命下限（リアル日）
+constexpr int      LIFESPAN_RANGE = 6;                   // [10, 15] のレンジ
 
 inline uint32_t rand7() { return get_rand_32() & 0x7Fu; }
 inline uint32_t rand8() { return get_rand_32() & 0xFFu; }
@@ -70,6 +74,11 @@ Game::Game(Sound* sound, const GameSaveData* data)
         for (int i = 0; i < _grave_count; ++i) {
             _graves[i] = data->graves[i];
         }
+        _lifespan_days = data->lifespan_days;
+        if (_lifespan_days == 0) {
+            // 旧 magic からマイグレートされた場合は新規に乱数で割り当て
+            _lifespan_days = uint8_t(LIFESPAN_MIN + (get_rand_32() % LIFESPAN_RANGE));
+        }
         _dirty = false;   // フラッシュ上の内容と一致しているので clean
     } else {
         newGame();        // newGame 側で _dirty = true される
@@ -92,6 +101,7 @@ void Game::newGame() {
     _tend_pet   = 0;
     _tend_shear = 0;
     _sleeping   = false;
+    _lifespan_days = uint8_t(LIFESPAN_MIN + (get_rand_32() % LIFESPAN_RANGE));  // 10-15 日
     _dirty      = true;   // 新規開始 / 死亡からの再スタート時は最初の保存を促す
 }
 
@@ -101,26 +111,41 @@ void Game::tick() {
     // 睡眠中はステータス減少を止める（Python の int(1*0.2)==0 に対応）
     int dec = _sleeping ? 0 : 1;
     if (_age_ticks % TICKS_PER_HOUR == 0) {
-        _hunger = std::max(0, _hunger - dec);
-        _happy  = std::max(0, _happy  - dec);
-        _wool   = std::min(100, _wool + 2);
+        uint32_t game_hour = _age_ticks / TICKS_PER_HOUR;
 
-        // 睡眠度の更新も「ゲーム内 1 時間ごと」にゲートする。
-        // Python 版はこのゲートが無くて 50ms ごとに sleepy +1 されており、
-        // 起動 4 秒で就寝してしまう不具合があった。
-        int hour = (_age_ticks / TICKS_PER_HOUR) % 24;
+        // 空腹/幸福は DECAY_HOURS おきに -1（24/day → 8/day で 10-15 日寿命に整合）
+        if (game_hour % DECAY_HOURS == 0) {
+            _hunger = std::max(0, _hunger - dec);
+            _happy  = std::max(0, _happy  - dec);
+        }
+        _wool = std::min(100, _wool + 2);
+
+        // 睡眠度の更新は「ゲーム内 1 時間ごと」にゲート。
+        // 起動時刻を朝 8 時にオフセットして boot 直後の即就寝を防ぐ。
+        int hour = (int(game_hour) + START_HOUR) % 24;
         if (hour >= 22 || hour < 6) {
             _sleepy = std::min(100, _sleepy + 1);
         } else if (_sleeping) {
             _sleepy = std::max(0, _sleepy - 2);
         }
 
-        _dirty = true;   // hunger/happy/wool/sleepy のいずれかが動いた可能性
+        // 傾向スコアは ×0.97/hour で減衰（直近の世話が進化判定で効きやすくなる）
+        _tend_feed  = (_tend_feed  * 97) / 100;
+        _tend_pet   = (_tend_pet   * 97) / 100;
+        _tend_shear = (_tend_shear * 97) / 100;
+
+        _dirty = true;
     }
 
     if (!_sleeping && _sleepy >= 80) _sleeping = true;
     if (_sleeping  && _sleepy <= 10) _sleeping = false;
 
+    // 自然死（寿命到達）と care-based 死亡（hunger/happy 限界）
+    uint32_t age_days_now = _age_ticks / TICKS_PER_DAY;
+    if (age_days_now >= _lifespan_days) {
+        die();
+        return;
+    }
     if (_hunger <= 0 || _happy <= 0) {
         die();
         return;
@@ -340,6 +365,7 @@ GameSaveData Game::saveData() const {
     d.tend_pet   = int16_t(_tend_pet);
     d.tend_shear = int16_t(_tend_shear);
     d.grave_count = uint8_t(_grave_count);
+    d.lifespan_days = _lifespan_days;
     for (int i = 0; i < _grave_count && i < MAX_GRAVES; ++i) {
         d.graves[i] = _graves[i];
     }
