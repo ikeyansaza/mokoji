@@ -17,7 +17,12 @@ public:
     void clear();                  // バッファ全消し（≒ MicroPython の fill(0)）
     void setPixel(int x, int y, bool on);
     void fillRect(int x, int y, int w, int h, bool on);
+    // 汎用スプライト描画。row_bytes は (w + 7) / 8。
+    void drawSpriteRaw(const uint8_t* sprite, int w, int h, int row_bytes, int x, int y);
+    // 後方互換用：24x24
     void drawSprite(const uint8_t sprite[24][3], int x, int y);
+    // 2 倍スケール描画：1 ピクセルを 2x2 ブロックとして描く
+    void drawSprite2x(const uint8_t sprite[24][3], int x, int y);
     void drawText(const char* s, int x, int y, bool inverse = false);
     void show();                   // バッファを OLED に転送
 

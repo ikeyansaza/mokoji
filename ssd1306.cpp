@@ -65,13 +65,30 @@ void SSD1306::fillRect(int x, int y, int w, int h, bool on) {
             setPixel(x + dx, y + dy, on);
 }
 
+void SSD1306::drawSpriteRaw(const uint8_t* sprite, int w, int h, int row_bytes, int x, int y) {
+    for (int row = 0; row < h; ++row) {
+        for (int col = 0; col < w; ++col) {
+            int bi  = col >> 3;
+            int bit = 7 - (col & 7);
+            if ((sprite[row * row_bytes + bi] >> bit) & 1) {
+                setPixel(x + col, y + row, true);
+            }
+        }
+    }
+}
+
 void SSD1306::drawSprite(const uint8_t sprite[24][3], int x, int y) {
+    drawSpriteRaw(reinterpret_cast<const uint8_t*>(sprite), 24, 24, 3, x, y);
+}
+
+void SSD1306::drawSprite2x(const uint8_t sprite[24][3], int x, int y) {
+    // 24x24 ソースを 48x48 出力で描画。各ピクセル = 2x2 ブロック。
     for (int row = 0; row < 24; ++row) {
         for (int col = 0; col < 24; ++col) {
             int bi  = col >> 3;
             int bit = 7 - (col & 7);
             if ((sprite[row][bi] >> bit) & 1) {
-                setPixel(x + col, y + row, true);
+                fillRect(x + col * 2, y + row * 2, 2, 2, true);
             }
         }
     }
