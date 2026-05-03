@@ -6,20 +6,30 @@ class Sound;
 
 class Game {
 public:
+    // 進化ステージ。spec: memory/project_mokoji_evolution_spec.md
     enum class Stage : uint8_t {
-        LAMB, YOUNG_MOKO, YOUNG_SURA, YOUNG_RARE, ADULT
+        BABY,            // ベビーシープ（共通子供）
+        YOUNG_MOKO,      // モコ系若羊
+        YOUNG_SUFFOLK,   // サフォーク系若羊
+        YOUNG_WILD,      // ワイルド系若羊
+        ADULT,           // 成体（増毛期/角長期は wool/horn 量で判定）
     };
     enum class DeathCause : uint8_t {
         STATUS = 0,   // 餓死 / 不幸死
         AGE    = 1    // 天寿
     };
+    // 6 品種：モコ系 2 + サフォーク系 2 + ワイルド系 2
     enum class Breed : uint8_t {
-        NONE, CORRIEDALE, MERINO, SUFFOLK, SOUTHDOWN, EASTFRIESIAN
+        NONE,
+        MERINO, CORRIEDALE,    // モコ系
+        SUFFOLK, HAMPSHIRE,    // サフォーク系
+        MOUFLON, BIGHORN,      // ワイルド系
     };
-    enum class SheepType  : uint8_t { NONE, MOKO, SURA, RARE };
+    // 系統（Stage / Breed から導出可能）
+    enum class Family : uint8_t { NONE, MOKO, SUFFOLK, WILD };
     enum class Screen     : uint8_t { MAIN, MENU, GRAVE, NAMING };
     enum class Face       : uint8_t { LEFT, FRONT, RIGHT };
-    enum class Action     : uint8_t { NONE, FEED, PET, SHEAR, MINI };
+    enum class Action     : uint8_t { NONE, FEED, PET, SHEAR, POLISH, MINI };
     enum class Button     : uint8_t { LEFT, CENTER, RIGHT, LEFT_LONG };
     enum class NamingMode : uint8_t {
         SELECT_MODE,   // [PRESET] / [TYPE] のどちらかを選ぶ
@@ -29,8 +39,9 @@ public:
     };
 
     static constexpr int  MENU_COUNT = 5;
-    static const Action   MENU_ITEMS[MENU_COUNT];
-    static const char*    menuLabel(int i);          // "EAT" / "PET" / "CUT" / "FUN" / "BACK"
+    // 系統別に「CUT/POLI」が切り替わるため、メニュー項目とラベルは Game の状態を見て返す。
+    Action      menuAction(int i) const;
+    const char* menuLabel(int i)  const;
     static const char*    breedSlug(Breed b);        // 短縮表記（4-5 文字）
 
     // ゲーム内時間の刻み定数。DEBUG_FAST / HOST_TEST 時は短縮版に切り替わる。
@@ -51,7 +62,10 @@ public:
     // 描画用アクセサ
     Stage     stage()       const { return _stage; }
     Breed     breed()       const { return _breed; }
-    SheepType sheepType()   const { return _sheep_type; }
+    Family    family()      const;   // _stage / _breed から判定
+    bool      isFluffy()    const;   // 増毛期判定（モコ・サフォーク系 + wool > 閾値）
+    bool      isLonghorn()  const;   // 角長期判定（ワイルド系 + horn > 閾値）
+    int       horn()        const { return _horn; }
     Screen    screen()      const { return _screen; }
     Face      face()        const { return _face; }
     Action    action()      const { return _action; }
@@ -87,15 +101,16 @@ private:
     uint8_t    _name_kana[5];             // ひらがな index 列（kana::END 終端、最大 4 字）
     Stage      _stage;
     Breed      _breed;
-    SheepType  _sheep_type;
     int        _hunger;
     int        _happy;
     int        _sleepy;
-    int        _wool;
+    int        _wool;            // モコ・サフォーク系の毛量、SHEAR で 0 リセット
+    int        _horn;            // ワイルド系の角の長さ、POLISH で 0 リセット
     uint32_t   _age_ticks;
     int        _tend_feed;
     int        _tend_pet;
     int        _tend_shear;
+    int        _tend_polish;     // POLISH（角研ぎ）の世話回数
     bool       _sleeping;
     uint8_t    _lifespan_days;   // 10-15 日のランダム個体寿命（自然死の上限）
 

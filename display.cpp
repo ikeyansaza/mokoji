@@ -148,9 +148,9 @@ void Display::drawMenu(const Game& g) {
         int x = i * item_w;
         if (i == cursor) {
             _oled->fillRect(x, 52, item_w - 1, 12, true);
-            _oled->drawText(Game::menuLabel(i), x + 1, 54, true);
+            _oled->drawText(g.menuLabel(i), x + 1, 54, true);
         } else {
-            _oled->drawText(Game::menuLabel(i), x + 1, 54, false);
+            _oled->drawText(g.menuLabel(i), x + 1, 54, false);
         }
     }
 }
@@ -190,31 +190,66 @@ void Display::drawGrave(const Game& g) {
 const uint8_t (*Display::selectSprite(const Game& g, Game::Face face))[3] {
     using namespace sprites;
 
-    const uint8_t (*L)[3] = LAMB_L;
-    const uint8_t (*F)[3] = LAMB_F;
-    const uint8_t (*R)[3] = LAMB_R;
+    const uint8_t (*L)[3] = BABY_L;
+    const uint8_t (*F)[3] = BABY_F;
+    const uint8_t (*R)[3] = BABY_R;
+
+    bool fluffy   = g.isFluffy();
+    bool longhorn = g.isLonghorn();
 
     switch (g.stage()) {
-        case Game::Stage::LAMB:
-            L = LAMB_L; F = LAMB_F; R = LAMB_R; break;
+        case Game::Stage::BABY:
+            L = BABY_L; F = BABY_F; R = BABY_R; break;
         case Game::Stage::YOUNG_MOKO:
             L = YOUNG_MOKO_L; F = YOUNG_MOKO_F; R = YOUNG_MOKO_R; break;
-        case Game::Stage::YOUNG_SURA:
-            L = YOUNG_SURA_L; F = YOUNG_SURA_F; R = YOUNG_SURA_R; break;
-        case Game::Stage::YOUNG_RARE:
-            L = YOUNG_RARE_L; F = YOUNG_RARE_F; R = YOUNG_RARE_R; break;
+        case Game::Stage::YOUNG_SUFFOLK:
+            L = YOUNG_SUFFOLK_L; F = YOUNG_SUFFOLK_F; R = YOUNG_SUFFOLK_R; break;
+        case Game::Stage::YOUNG_WILD:
+            L = YOUNG_WILD_L; F = YOUNG_WILD_F; R = YOUNG_WILD_R; break;
         case Game::Stage::ADULT:
             switch (g.breed()) {
-                case Game::Breed::CORRIEDALE:
-                    L = ADULT_COR_L;  F = ADULT_COR_F;  R = ADULT_COR_R;  break;
                 case Game::Breed::MERINO:
-                    L = ADULT_MER_L;  F = ADULT_MER_F;  R = ADULT_MER_R;  break;
+                    if (fluffy) {
+                        L = ADULT_MERINO_FLUFFY_L; F = ADULT_MERINO_FLUFFY_F; R = ADULT_MERINO_FLUFFY_R;
+                    } else {
+                        L = ADULT_MERINO_L; F = ADULT_MERINO_F; R = ADULT_MERINO_R;
+                    }
+                    break;
+                case Game::Breed::CORRIEDALE:
+                    if (fluffy) {
+                        L = ADULT_CORRIEDALE_FLUFFY_L; F = ADULT_CORRIEDALE_FLUFFY_F; R = ADULT_CORRIEDALE_FLUFFY_R;
+                    } else {
+                        L = ADULT_CORRIEDALE_L; F = ADULT_CORRIEDALE_F; R = ADULT_CORRIEDALE_R;
+                    }
+                    break;
                 case Game::Breed::SUFFOLK:
-                    L = ADULT_SUF_L;  F = ADULT_SUF_F;  R = ADULT_SUF_R;  break;
-                case Game::Breed::SOUTHDOWN:
-                    L = ADULT_SOU_L;  F = ADULT_SOU_F;  R = ADULT_SOU_R;  break;
-                case Game::Breed::EASTFRIESIAN:
-                    L = ADULT_EAST_L; F = ADULT_EAST_F; R = ADULT_EAST_R; break;
+                    if (fluffy) {
+                        L = ADULT_SUFFOLK_FLUFFY_L; F = ADULT_SUFFOLK_FLUFFY_F; R = ADULT_SUFFOLK_FLUFFY_R;
+                    } else {
+                        L = ADULT_SUFFOLK_L; F = ADULT_SUFFOLK_F; R = ADULT_SUFFOLK_R;
+                    }
+                    break;
+                case Game::Breed::HAMPSHIRE:
+                    if (fluffy) {
+                        L = ADULT_HAMPSHIRE_FLUFFY_L; F = ADULT_HAMPSHIRE_FLUFFY_F; R = ADULT_HAMPSHIRE_FLUFFY_R;
+                    } else {
+                        L = ADULT_HAMPSHIRE_L; F = ADULT_HAMPSHIRE_F; R = ADULT_HAMPSHIRE_R;
+                    }
+                    break;
+                case Game::Breed::MOUFLON:
+                    if (longhorn) {
+                        L = ADULT_MOUFLON_LONGHORN_L; F = ADULT_MOUFLON_LONGHORN_F; R = ADULT_MOUFLON_LONGHORN_R;
+                    } else {
+                        L = ADULT_MOUFLON_L; F = ADULT_MOUFLON_F; R = ADULT_MOUFLON_R;
+                    }
+                    break;
+                case Game::Breed::BIGHORN:
+                    if (longhorn) {
+                        L = ADULT_BIGHORN_LONGHORN_L; F = ADULT_BIGHORN_LONGHORN_F; R = ADULT_BIGHORN_LONGHORN_R;
+                    } else {
+                        L = ADULT_BIGHORN_L; F = ADULT_BIGHORN_F; R = ADULT_BIGHORN_R;
+                    }
+                    break;
                 default: break;
             }
             break;

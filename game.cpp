@@ -19,28 +19,65 @@ constexpr int      LIFESPAN_RANGE = 6;                   // [10, 15] のレン�
 inline uint32_t rand7() { return get_rand_32() & 0x7Fu; }
 inline uint32_t rand8() { return get_rand_32() & 0xFFu; }
 
-const char* const kMenuLabels[Game::MENU_COUNT] = { "EAT", "PET", "CUT", "FUN", "BACK" };
+const char* const kMenuLabelsDefault[Game::MENU_COUNT] = { "EAT", "PET", "CUT", "FUN", "BACK" };
+const Game::Action kMenuActionsDefault[Game::MENU_COUNT] = {
+    Game::Action::FEED, Game::Action::PET, Game::Action::SHEAR, Game::Action::MINI,
+    Game::Action::NONE   // BACK
+};
 }  // namespace
 
-const Game::Action Game::MENU_ITEMS[Game::MENU_COUNT] = {
-    Action::FEED, Action::PET, Action::SHEAR, Action::MINI,
-    Action::NONE   // BACK：何もせずメイン画面に戻る
-};
-
-const char* Game::menuLabel(int i) {
+const char* Game::menuLabel(int i) const {
     if (i < 0 || i >= MENU_COUNT) return "";
-    return kMenuLabels[i];
+    if (i == 2 && family() == Family::WILD) return "POLI";
+    return kMenuLabelsDefault[i];
+}
+
+Game::Action Game::menuAction(int i) const {
+    if (i < 0 || i >= MENU_COUNT) return Action::NONE;
+    if (i == 2 && family() == Family::WILD) return Action::POLISH;
+    return kMenuActionsDefault[i];
 }
 
 const char* Game::breedSlug(Breed b) {
     switch (b) {
-        case Breed::CORRIEDALE:   return "CORR";
-        case Breed::MERINO:       return "MERI";
-        case Breed::SUFFOLK:      return "SUFF";
-        case Breed::SOUTHDOWN:    return "SOUT";
-        case Breed::EASTFRIESIAN: return "EAST";
-        default:                  return "??";
+        case Breed::MERINO:     return "MERI";
+        case Breed::CORRIEDALE: return "CORR";
+        case Breed::SUFFOLK:    return "SUFF";
+        case Breed::HAMPSHIRE:  return "HAMP";
+        case Breed::MOUFLON:    return "MOUF";
+        case Breed::BIGHORN:    return "BIGH";
+        default:                return "??";
     }
+}
+
+Game::Family Game::family() const {
+    switch (_stage) {
+        case Stage::YOUNG_MOKO:    return Family::MOKO;
+        case Stage::YOUNG_SUFFOLK: return Family::SUFFOLK;
+        case Stage::YOUNG_WILD:    return Family::WILD;
+        case Stage::ADULT:
+            switch (_breed) {
+                case Breed::MERINO:
+                case Breed::CORRIEDALE: return Family::MOKO;
+                case Breed::SUFFOLK:
+                case Breed::HAMPSHIRE:  return Family::SUFFOLK;
+                case Breed::MOUFLON:
+                case Breed::BIGHORN:    return Family::WILD;
+                default:                return Family::NONE;
+            }
+        default:                   return Family::NONE;
+    }
+}
+
+bool Game::isFluffy() const {
+    if (_stage != Stage::ADULT) return false;
+    Family f = family();
+    return (f == Family::MOKO || f == Family::SUFFOLK) && _wool > 50;
+}
+
+bool Game::isLonghorn() const {
+    if (_stage != Stage::ADULT) return false;
+    return family() == Family::WILD && _horn > 50;
 }
 
 Game::Game(Sound* sound, const GameSaveData* data)
@@ -61,18 +98,19 @@ Game::Game(Sound* sound, const GameSaveData* data)
     if (data && data->magic == GameSaveData::MAGIC) {
         memcpy(_name, data->name, sizeof(_name));
         _name[sizeof(_name) - 1] = '\0';
-        _stage      = static_cast<Stage>(data->stage);
-        _breed      = static_cast<Breed>(data->breed);
-        _sheep_type = static_cast<SheepType>(data->sheep_type);
-        _hunger     = data->hunger;
-        _happy      = data->happy;
-        _sleepy     = data->sleepy;
-        _wool       = data->wool;
-        _age_ticks  = data->age_ticks;
-        _tend_feed  = data->tend_feed;
-        _tend_pet   = data->tend_pet;
-        _tend_shear = data->tend_shear;
-        _sleeping   = data->sleeping != 0;
+        _stage       = static_cast<Stage>(data->stage);
+        _breed       = static_cast<Breed>(data->breed);
+        _hunger      = data->hunger;
+        _happy       = data->happy;
+        _sleepy      = data->sleepy;
+        _wool        = data->wool;
+        _horn        = data->horn;
+        _age_ticks   = data->age_ticks;
+        _tend_feed   = data->tend_feed;
+        _tend_pet    = data->tend_pet;
+        _tend_shear  = data->tend_shear;
+        _tend_polish = data->tend_polish;
+        _sleeping    = data->sleeping != 0;
         _grave_count = data->grave_count;
         if (_grave_count > MAX_GRAVES) _grave_count = MAX_GRAVES;
         for (int i = 0; i < _grave_count; ++i) {
@@ -97,18 +135,19 @@ void Game::newGame() {
     // 名前は最初のプリセット「もこ」(index 34, 9) をデフォルトに
     for (int i = 0; i < 5; ++i) _name_kana[i] = kana::PRESETS[0][i];
     deriveRomajiName();
-    _stage      = Stage::LAMB;
-    _breed      = Breed::NONE;
-    _sheep_type = SheepType::NONE;
-    _hunger     = 100;
-    _happy      = 100;
-    _sleepy     = 0;
-    _wool       = 0;
-    _age_ticks  = 0;
-    _tend_feed  = 0;
-    _tend_pet   = 0;
-    _tend_shear = 0;
-    _sleeping   = false;
+    _stage       = Stage::BABY;
+    _breed       = Breed::NONE;
+    _hunger      = 100;
+    _happy       = 100;
+    _sleepy      = 0;
+    _wool        = 0;
+    _horn        = 0;
+    _age_ticks   = 0;
+    _tend_feed   = 0;
+    _tend_pet    = 0;
+    _tend_shear  = 0;
+    _tend_polish = 0;
+    _sleeping    = false;
     _lifespan_days = uint8_t(LIFESPAN_MIN + (get_rand_32() % LIFESPAN_RANGE));  // 10-15 日
     _dirty      = true;   // 新規開始 / 死亡からの再スタート時は最初の保存を促す
 }
@@ -126,7 +165,18 @@ void Game::tick() {
             _hunger = std::max(0, _hunger - dec);
             _happy  = std::max(0, _happy  - dec);
         }
-        _wool = std::min(100, _wool + 2);
+        // 系統に応じて毛 or 角を伸ばす（成体のみ）
+        Family fam = family();
+        if (_stage == Stage::ADULT) {
+            if (fam == Family::MOKO || fam == Family::SUFFOLK) {
+                _wool = std::min(100, _wool + 2);
+            } else if (fam == Family::WILD) {
+                _horn = std::min(100, _horn + 2);
+            }
+        } else {
+            // BABY/YOUNG は毛も少し伸びる（演出用）
+            _wool = std::min(100, _wool + 1);
+        }
 
         // 睡眠度の更新は「ゲーム内 1 時間ごと」にゲート。
         // 起動時刻を朝 8 時にオフセットして boot 直後の即就寝を防ぐ。
@@ -138,9 +188,10 @@ void Game::tick() {
         }
 
         // 傾向スコアは ×0.97/hour で減衰（直近の世話が進化判定で効きやすくなる）
-        _tend_feed  = (_tend_feed  * 97) / 100;
-        _tend_pet   = (_tend_pet   * 97) / 100;
-        _tend_shear = (_tend_shear * 97) / 100;
+        _tend_feed   = (_tend_feed   * 97) / 100;
+        _tend_pet    = (_tend_pet    * 97) / 100;
+        _tend_shear  = (_tend_shear  * 97) / 100;
+        _tend_polish = (_tend_polish * 97) / 100;
 
         _dirty = true;
     }
@@ -160,11 +211,11 @@ void Game::tick() {
     }
 
     uint32_t age_days = _age_ticks / TICKS_PER_DAY;
-    if (_stage == Stage::LAMB && age_days >= 3) {
+    if (_stage == Stage::BABY && age_days >= 3) {
         evolveYoung();
     } else if ((_stage == Stage::YOUNG_MOKO ||
-                _stage == Stage::YOUNG_SURA ||
-                _stage == Stage::YOUNG_RARE) && age_days >= 7) {
+                _stage == Stage::YOUNG_SUFFOLK ||
+                _stage == Stage::YOUNG_WILD) && age_days >= 7) {
         evolveAdult();
     }
 
@@ -260,7 +311,7 @@ void Game::onButton(Button btn) {
             } else if (btn == Button::RIGHT) {
                 _menu_cursor = (_menu_cursor + 1) % MENU_COUNT;
             } else if (btn == Button::CENTER) {
-                doAction(MENU_ITEMS[_menu_cursor]);
+                doAction(menuAction(_menu_cursor));
                 _screen = Screen::MAIN;
             }
             break;
@@ -291,6 +342,7 @@ void Game::doAction(Action act) {
             if (_sound) _sound->mee();
             break;
         case Action::SHEAR:
+            // モコ系・サフォーク系のみ実効。それ以外は no-op。
             if (_wool > 10) {
                 _wool = 0;
                 _happy = std::min(100, _happy + 10);
@@ -298,6 +350,17 @@ void Game::doAction(Action act) {
                 _action = Action::SHEAR;
                 _dirty = true;
                 if (_sound) _sound->joki();
+            }
+            break;
+        case Action::POLISH:
+            // ワイルド系のみ実効（角を磨いて短くする）
+            if (_horn > 10) {
+                _horn = 0;
+                _happy = std::min(100, _happy + 10);
+                _tend_polish += 1;
+                _action = Action::POLISH;
+                _dirty = true;
+                if (_sound) _sound->joki();   // 暫定で同じ音
             }
             break;
         case Action::MINI:
@@ -314,45 +377,48 @@ void Game::doAction(Action act) {
 }
 
 void Game::evolveYoung() {
-    if (rand7() < uint32_t(RARE_PROB)) {
-        _stage = Stage::YOUNG_RARE;
-        _sheep_type = SheepType::RARE;
-        _dirty = true;
-        if (_sound) _sound->happy();
-        return;
-    }
-
+    // BABY → 3 系統。世話パターンで重み付け：
+    //   モコ系：feed + pet 多め（健康重視）
+    //   サフォーク系：pet 多め（人懐っこい）
+    //   ワイルド系：放置気味（feed/pet 少なめ → 残りに割り振り）
     int total = _tend_feed + _tend_pet + _tend_shear + 1;
-    int moko_w = 50 + (_tend_feed + _tend_pet) * 30 / total;
-    int sura_w = 50 + _tend_shear * 30 / total;
+    int moko_w    = 50 + (_tend_feed + _tend_pet) * 30 / total;
+    int suffolk_w = 50 + _tend_pet * 40 / total;
+    int wild_w    = 50;   // ベース確率、世話少ないと相対的に上がる
 
-    int roll = rand7() % (moko_w + sura_w);
+    int roll = rand7() % (moko_w + suffolk_w + wild_w);
     if (roll < moko_w) {
         _stage = Stage::YOUNG_MOKO;
-        _sheep_type = SheepType::MOKO;
+    } else if (roll < moko_w + suffolk_w) {
+        _stage = Stage::YOUNG_SUFFOLK;
     } else {
-        _stage = Stage::YOUNG_SURA;
-        _sheep_type = SheepType::SURA;
+        _stage = Stage::YOUNG_WILD;
     }
     _dirty = true;
     if (_sound) _sound->happy();
 }
 
 void Game::evolveAdult() {
-    int total = _tend_feed + _tend_pet + _tend_shear + 1;
+    int total = _tend_feed + _tend_pet + _tend_shear + _tend_polish + 1;
 
-    if (_sheep_type == SheepType::MOKO) {
-        int cor_w = 50 + _tend_feed * 50 / total;
-        int mer_w = 50 + _tend_pet  * 50 / total;
-        int roll = rand8() % (cor_w + mer_w);
-        _breed = (roll < cor_w) ? Breed::CORRIEDALE : Breed::MERINO;
-    } else if (_sheep_type == SheepType::SURA) {
-        int suf_w = 50 + (_tend_feed + _tend_pet) * 30 / total;
-        int sou_w = 50 + _tend_shear * 50 / total;
-        int roll = rand8() % (suf_w + sou_w);
-        _breed = (roll < suf_w) ? Breed::SUFFOLK : Breed::SOUTHDOWN;
+    if (_stage == Stage::YOUNG_MOKO) {
+        // モコ系：feed 多めで MERINO（毛量重視）、pet 多めで CORRIEDALE（バランス）
+        int merino_w     = 50 + _tend_feed * 50 / total;
+        int corriedale_w = 50 + _tend_pet  * 50 / total;
+        int roll = rand8() % (merino_w + corriedale_w);
+        _breed = (roll < merino_w) ? Breed::MERINO : Breed::CORRIEDALE;
+    } else if (_stage == Stage::YOUNG_SUFFOLK) {
+        // サフォーク系：pet 多めで SUFFOLK（人懐っこい）、feed+pet で HAMPSHIRE（強化版）
+        int suffolk_w   = 50 + _tend_pet * 50 / total;
+        int hampshire_w = 50 + (_tend_feed + _tend_pet) * 30 / total;
+        int roll = rand8() % (suffolk_w + hampshire_w);
+        _breed = (roll < suffolk_w) ? Breed::SUFFOLK : Breed::HAMPSHIRE;
     } else {
-        _breed = Breed::EASTFRIESIAN;
+        // ワイルド系：polish 多めで BIGHORN（角ケア重視）、放置で MOUFLON（小型）
+        int mouflon_w = 50;
+        int bighorn_w = 50 + _tend_polish * 60 / total;
+        int roll = rand8() % (mouflon_w + bighorn_w);
+        _breed = (roll < mouflon_w) ? Breed::MOUFLON : Breed::BIGHORN;
     }
 
     _stage = Stage::ADULT;
@@ -386,18 +452,19 @@ GameSaveData Game::saveData() const {
     GameSaveData d{};
     d.magic = GameSaveData::MAGIC;
     std::memcpy(d.name, _name, sizeof(_name));
-    d.stage      = uint8_t(_stage);
-    d.breed      = uint8_t(_breed);
-    d.sheep_type = uint8_t(_sheep_type);
-    d.hunger     = uint8_t(_hunger);
-    d.happy      = uint8_t(_happy);
-    d.sleepy     = uint8_t(_sleepy);
-    d.wool       = uint8_t(_wool);
-    d.sleeping   = _sleeping ? 1 : 0;
-    d.age_ticks  = _age_ticks;
-    d.tend_feed  = int16_t(_tend_feed);
-    d.tend_pet   = int16_t(_tend_pet);
-    d.tend_shear = int16_t(_tend_shear);
+    d.stage       = uint8_t(_stage);
+    d.breed       = uint8_t(_breed);
+    d.hunger      = uint8_t(_hunger);
+    d.happy       = uint8_t(_happy);
+    d.sleepy      = uint8_t(_sleepy);
+    d.wool        = uint8_t(_wool);
+    d.horn        = uint8_t(_horn);
+    d.sleeping    = _sleeping ? 1 : 0;
+    d.age_ticks   = _age_ticks;
+    d.tend_feed   = int16_t(_tend_feed);
+    d.tend_pet    = int16_t(_tend_pet);
+    d.tend_shear  = int16_t(_tend_shear);
+    d.tend_polish = int16_t(_tend_polish);
     d.grave_count = uint8_t(_grave_count);
     d.lifespan_days = _lifespan_days;
     std::memcpy(d.name_kana, _name_kana, sizeof(d.name_kana));

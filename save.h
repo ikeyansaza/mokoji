@@ -22,24 +22,26 @@ struct GraveRecord {
 // 末尾の crc は load 時に検証されるので、部分書き込み（電源断中の write 失敗）は
 // CRC 不一致として検出され「セーブ無し」扱いになる。
 struct GameSaveData {
-    static constexpr uint32_t MAGIC = 0x4D4F4B34;  // 'MOK4'（CRC 追加で MOK3 から bump）
+    // 'MOK5'：進化仕様 16 種対応で構造変更（sheep_type 削除、horn/tend_polish 追加）
+    static constexpr uint32_t MAGIC = 0x4D4F4B35;
 
     uint32_t magic;
     char     name[8];                          // 名前 romaji（display 互換）
     uint8_t  name_kana[SAVE_NAME_KANA_LEN];    // 名前ひらがな index 列
     uint8_t  stage;          // Game::Stage の生値
     uint8_t  breed;          // Game::Breed の生値
-    uint8_t  sheep_type;     // Game::SheepType の生値
     uint8_t  hunger;
     uint8_t  happy;
     uint8_t  sleepy;
     uint8_t  wool;
+    uint8_t  horn;           // ワイルド系の角の長さ
     uint8_t  sleeping;
     uint8_t  lifespan_days;  // 個体寿命（10-15 日のランダム値）
     uint32_t age_ticks;
     int16_t  tend_feed;
     int16_t  tend_pet;
     int16_t  tend_shear;
+    int16_t  tend_polish;    // POLISH（角研ぎ）の世話回数
     uint8_t  grave_count;
     GraveRecord graves[MAX_GRAVES];
     uint32_t crc;            // 上記全フィールドを対象とした CRC32（load 時検証）

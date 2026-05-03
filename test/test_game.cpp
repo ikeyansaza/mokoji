@@ -44,7 +44,7 @@ static void test_default_state() {
     assert(g.hunger() == 100);
     assert(g.happy()  == 100);
     assert(g.wool()   == 0);
-    assert(g.stage()  == Game::Stage::LAMB);
+    assert(g.stage()  == Game::Stage::BABY);
     assert(g.breed()  == Game::Breed::NONE);
     assert(g.graveCount() == 0);
     assert(!g.sleeping());
@@ -178,16 +178,16 @@ static void test_evolution_to_young() {
     skip_naming(g);
     // 3 days 強までゲームを進める。途中で死なないように適宜 feed/pet。
     uint32_t budget = Game::TICKS_PER_DAY * 5;
-    while (g.stage() == Game::Stage::LAMB && g.ageTicks() < budget) {
+    while (g.stage() == Game::Stage::BABY && g.ageTicks() < budget) {
         g.tick();
         if (g.hunger() < 50) menu_action(g, 0);  // FEED
         if (g.happy()  < 50) menu_action(g, 1);  // PET
     }
-    assert(g.stage() != Game::Stage::LAMB);
+    assert(g.stage() != Game::Stage::BABY);
     auto s = g.stage();
     assert(s == Game::Stage::YOUNG_MOKO ||
-           s == Game::Stage::YOUNG_SURA ||
-           s == Game::Stage::YOUNG_RARE);
+           s == Game::Stage::YOUNG_SUFFOLK ||
+           s == Game::Stage::YOUNG_WILD);
 }
 
 static void test_evolution_to_adult() {
@@ -216,7 +216,7 @@ static void test_death_increments_graves_and_preserves_them() {
 
     // newGame の後はデフォルト名 "moko"（プリセット 0 由来）で再スタート
     assert(std::strcmp(g.name(), "moko") == 0);
-    assert(g.stage() == Game::Stage::LAMB);
+    assert(g.stage() == Game::Stage::BABY);
 
     // もう 1 回殺して、墓が累積することを確認（Python 版にあった
     // 「_new_game で graves=[] してしまうバグ」が C++ では直っていることの検証）
