@@ -37,10 +37,11 @@ void Display::drawMain(const Game& g) {
     if (g.wool() > 30) drawWool(g.wool(), sx);
     drawActionFx(g);
 
-    // 表情オーバーレイ（base sprite の上に描く、FRONT 向きのみ）
-    if (g.face() == Game::Face::FRONT) {
-        drawFaceFx(g, sx, sy);
-    }
+    // 表情オーバーレイは SVG 参考デザインに合わせて当面オフ（スプライト自体に
+    // 目・鼻が描き込まれているので overlay すると二重になる）。
+    // 必要なら drawFaceFx の座標を新スプライト基準に書き直して有効化する。
+    // if (g.face() == Game::Face::FRONT) drawFaceFx(g, sx, sy);
+    (void)0;
 
     // ステータス overlay：LEFT ボタン押下中だけ表示
     if (g.leftHeld()) {
@@ -156,13 +157,16 @@ void Display::drawMenu(const Game& g) {
 
 void Display::drawSleep(const Game& g) {
     // 焼き付き対策：スプライトと "zzz..." を ~8 秒周期で ±2px ドリフトさせる。
-    // 同じピクセルを長時間光らせ続けないようにするだけで、OLED の劣化を遅らせられる。
     static constexpr int8_t kDrift[8] = { 0, 1, 2, 1, 0, -1, -2, -1 };
-    int dx = kDrift[(g.ageTicks() / 20) & 7];   // 20 tick = 1 sec @ 50ms tick
+    int dx = kDrift[(g.ageTicks() / 20) & 7];
 
+    // 起きてる時と同じ 2x スケールで表示（サイズが急に変わって「消えた→現れた」と
+    // 見えるのを防ぐ）。羊の中央を画面中央寄りに配置。
     auto sprite = selectSprite(g, Game::Face::FRONT);
-    _oled->drawSprite(sprite, 52 + dx, 20);
-    _oled->drawText("zzz...", 56 + dx, 48);
+    _oled->drawSprite2x(sprite, 40 + dx, 12);
+
+    // "zzz..." は左上に小さく
+    _oled->drawText("zzz", 0, 0);
 }
 
 void Display::drawGrave(const Game& g) {
