@@ -8,8 +8,9 @@
 namespace {
 // TICKS_PER_HOUR / TICKS_PER_DAY は Game 側に公開した（テスト・DEBUG_FAST との整合のため）
 constexpr int      RARE_PROB      = 5;                   // %（実際は /128 ≒ 3.9%、Python 版と同条件）
-constexpr int      WALK_LEFT      = 10;
-constexpr int      WALK_RIGHT     = 90;
+// 羊スプライトは 2x スケール表示で 48x48 になるため、画面端まで使えるよう範囲を広げる
+constexpr int      WALK_LEFT      = 0;
+constexpr int      WALK_RIGHT     = 80;   // 128 - 48 = 80（右端余白ゼロ）
 constexpr int      DECAY_HOURS    = 3;                   // 空腹/幸福の減少間隔（game-hour）
 constexpr int      START_HOUR     = 8;                   // 起動時のゲーム内時刻（朝 8 時）→ 即就寝を防ぐ
 constexpr int      LIFESPAN_MIN   = 10;                  // 自然死 寿命下限（リアル日）
@@ -18,11 +19,12 @@ constexpr int      LIFESPAN_RANGE = 6;                   // [10, 15] のレン�
 inline uint32_t rand7() { return get_rand_32() & 0x7Fu; }
 inline uint32_t rand8() { return get_rand_32() & 0xFFu; }
 
-const char* const kMenuLabels[Game::MENU_COUNT] = { "EAT", "PET", "CUT", "FUN" };
+const char* const kMenuLabels[Game::MENU_COUNT] = { "EAT", "PET", "CUT", "FUN", "BACK" };
 }  // namespace
 
 const Game::Action Game::MENU_ITEMS[Game::MENU_COUNT] = {
-    Action::FEED, Action::PET, Action::SHEAR, Action::MINI
+    Action::FEED, Action::PET, Action::SHEAR, Action::MINI,
+    Action::NONE   // BACK：何もせずメイン画面に戻る
 };
 
 const char* Game::menuLabel(int i) {
@@ -52,6 +54,7 @@ Game::Game(Sound* sound, const GameSaveData* data)
     _action      = Action::NONE;
     _screen      = Screen::MAIN;
     _menu_cursor = 0;
+    _left_held   = false;
     _walk_state  = WalkState::WALK;
     _walk_state_remaining = 80;   // 起動直後 4 秒は歩く
 
@@ -248,6 +251,8 @@ void Game::onButton(Button btn) {
     switch (_screen) {
         case Screen::MAIN:
             if (btn == Button::CENTER) _screen = Screen::MENU;
+            // LEFT は押下中（_left_held）でステータス overlay 表示する仕組みなので
+            // ここでは何もしない。
             break;
         case Screen::MENU:
             if (btn == Button::LEFT) {

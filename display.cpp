@@ -23,7 +23,112 @@ void Display::draw(const Game& g) {
 }
 
 void Display::drawMain(const Game& g) {
-    // 上段ステータス：空腹バー + 名前
+    // ふわふわアイドル：12 tick 周期で 0/-1/-2/-1 と上下バウンス
+    static constexpr int8_t kBob[4] = { 0, -1, -2, -1 };
+    int bob = kBob[(g.ageTicks() / 6) & 3];
+
+    int sx = g.walkX();
+    int sy = 12 + bob;
+
+    // 羊本体（2 倍スケール = 48x48）
+    auto sprite = selectSprite(g, g.face());
+    _oled->drawSprite2x(sprite, sx, sy);
+
+    if (g.wool() > 30) drawWool(g.wool(), sx);
+    drawActionFx(g);
+
+    // 表情オーバーレイ（base sprite の上に描く、FRONT 向きのみ）
+    if (g.face() == Game::Face::FRONT) {
+        drawFaceFx(g, sx, sy);
+    }
+
+    // ステータス overlay：LEFT ボタン押下中だけ表示
+    if (g.leftHeld()) {
+        int hbars = g.hunger() / 20;
+        char status[16];
+        int p = 0;
+        status[p++] = 'H';
+        status[p++] = ':';
+        for (int i = 0; i < hbars; ++i)        status[p++] = '|';
+        for (int i = hbars; i < 5; ++i)        status[p++] = '.';
+        status[p] = '\0';
+        _oled->drawText(status, 0, 0);
+        _oled->drawText(g.name(), 96, 0);
+    }
+}
+
+void Display::drawFaceFx(const Game& g, int sx, int sy) {
+    // チビ系スプライトの目位置（24x24 ソース）：
+    //   左目: cols 8-9, rows 6-7（ネガティブ穴）
+    //   右目: cols 14-15, rows 6-7
+    // 2x スケール後：
+    //   左目: cols 16-19, rows 12-15 (4x4 area)
+    //   右目: cols 28-31, rows 12-15
+    constexpr int LEYE_X = 16, REYE_X = 28, EYE_Y = 12;
+
+    // === まばたき：~5 秒に 1 回、4 tick だけ目を閉じる ===
+    bool blinking = (g.ageTicks() % 100) < 4;
+    if (blinking) {
+        // 目の中央に水平線（薄目）
+        _oled->fillRect(sx + LEYE_X, sy + EYE_Y + 1, 4, 2, true);
+        _oled->fillRect(sx + REYE_X, sy + EYE_Y + 1, 4, 2, true);
+    } else {
+        // === 通常時：目のハイライト（光る点を入れる）===
+        // 黒目の中の左上に 1 pixel 灯すと「目に光が宿る」感
+        _oled->setPixel(sx + LEYE_X + 1, sy + EYE_Y + 1, true);
+        _oled->setPixel(sx + REYE_X + 1, sy + EYE_Y + 1, true);
+    }
+
+    // === 状態別の口表情（base sprite の口の上に追加描画）===
+    // base 口位置: cols 10-13, row 9（ネガティブ穴）→ 2x: cols 20-27, rows 18-19
+    if (g.hunger() < 30 || g.happy() < 30) {
+        // ピンチ：口元に「><」っぽい短いライン追加（困った顔）
+        _oled->setPixel(sx + 22, sy + 21, true);
+        _oled->setPixel(sx + 25, sy + 21, true);
+    } else if (g.hunger() > 80 && g.happy() > 80) {
+        // 大満足：口角を上げる小さい点を追加（ニッコリ強調）
+        _oled->setPixel(sx + 19, sy + 18, true);
+        _oled->setPixel(sx + 28, sy + 18, true);
+    }
+}
+
+void Display::drawActionFx(const Game& g) {
+    if (g.action() == Game::Action::NONE) return;
+    int sx = g.walkX();
+    int t  = g.walkTick();   // 0..40
+
+    // 2x スケール（48x48）の羊基準。羊は (sx, 12) 〜 (sx+48, 60) を占める。
+    switch (g.action()) {
+        case Game::Action::FEED: {
+            // 羊の口元（中央下寄り）に「もぐもぐ」点滅エフェクト。
+            const char* frames[] = { ".", "o", "O", "o" };
+            const char* mark = frames[(t / 5) & 3];
+            _oled->drawText(mark, sx + 44, 36);
+            break;
+        }
+        case Game::Action::PET: {
+            // 羊の頭の上にハート「<3」がふわっと上に浮く。
+            int dy = -(t / 4);
+            int y  = 4 + dy;
+            if (y >= 0) _oled->drawText("<3", sx + 16, y);
+            break;
+        }
+        case Game::Action::SHEAR: {
+            // 羊の上で「><」（ハサミ）がパチパチ動く。
+            const char* mark = ((t / 4) & 1) ? "><" : "X.";
+            _oled->drawText(mark, sx + 16, 4);
+            break;
+        }
+        case Game::Action::MINI: {
+            _oled->drawText("*", sx + 20, 4);
+            break;
+        }
+        default: break;
+    }
+}
+
+void Display::drawMenu(const Game& g) {
+    // 上段：ステータス（メニュー操作中なので常時表示で意思決定の材料に）
     int hbars = g.hunger() / 20;
     char status[16];
     int p = 0;
@@ -35,28 +140,18 @@ void Display::drawMain(const Game& g) {
     _oled->drawText(status, 0, 0);
     _oled->drawText(g.name(), 96, 0);
 
-    // 羊本体
-    auto sprite = selectSprite(g, g.face());
-    _oled->drawSprite(sprite, g.walkX(), 20);
-
-    if (g.wool() > 30) drawWool(g.wool(), g.walkX());
-
-    _oled->drawText("< menu >", 40, 56);
-}
-
-void Display::drawMenu(const Game& g) {
+    // 下段：メニュー項目（5 項目、画面幅 128 px に収める）
     int cursor = g.menuCursor();
+    constexpr int item_w = 25;
     for (int i = 0; i < Game::MENU_COUNT; ++i) {
-        int x = i * 32;
+        int x = i * item_w;
         if (i == cursor) {
-            _oled->fillRect(x, 52, 30, 12, true);
+            _oled->fillRect(x, 52, item_w - 1, 12, true);
             _oled->drawText(Game::menuLabel(i), x + 1, 54, true);
         } else {
             _oled->drawText(Game::menuLabel(i), x + 1, 54, false);
         }
     }
-    auto sprite = selectSprite(g, Game::Face::FRONT);
-    _oled->drawSprite(sprite, 52, 20);
 }
 
 void Display::drawSleep(const Game& g) {
@@ -220,11 +315,13 @@ void Display::drawNaming(const Game& g) {
 void Display::drawWool(int wool, int sx) {
     int density = wool / 10;
     int dots = density * 8;
+    // 2x スケール羊（48x48 @ y=12）の中心は (sx+24, 36)。
+    // その周辺にキラキラ散らす（範囲も 2 倍に）。
     for (int i = 0; i < dots; ++i) {
-        int dx = int(get_rand_32() & 0x1Fu) - 12;
-        int dy = int(get_rand_32() & 0x1Fu) - 12;
-        int px = sx + 12 + dx;
-        int py = 32 + dy;
+        int dx = int(get_rand_32() & 0x3Fu) - 24;
+        int dy = int(get_rand_32() & 0x3Fu) - 24;
+        int px = sx + 24 + dx;
+        int py = 36 + dy;
         if (px >= 0 && px < SSD1306::W && py >= 0 && py < SSD1306::H) {
             _oled->setPixel(px, py, true);
         }

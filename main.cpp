@@ -104,6 +104,9 @@ int main() {
         poll_button(PIN_BTN_CENTER, bC, Game::Button::CENTER, false, Game::Button::CENTER);
         poll_button(PIN_BTN_RIGHT,  bR, Game::Button::RIGHT,  false, Game::Button::RIGHT);
 
+        // メイン画面のステータス overlay 用に、LEFT 押下中フラグを毎フレーム反映
+        game.setLeftHeld(bL.pressed);
+
         disp.draw(game);
         oled.show();
 

@@ -28,9 +28,9 @@ public:
         INPUT_CHAR,    // 手動入力：行内の文字を選ぶ
     };
 
-    static constexpr int  MENU_COUNT = 4;
+    static constexpr int  MENU_COUNT = 5;
     static const Action   MENU_ITEMS[MENU_COUNT];
-    static const char*    menuLabel(int i);          // "EAT" / "PET" / "CUT" / "FUN"
+    static const char*    menuLabel(int i);          // "EAT" / "PET" / "CUT" / "FUN" / "BACK"
     static const char*    breedSlug(Breed b);        // 短縮表記（4-5 文字）
 
     // ゲーム内時間の刻み定数。DEBUG_FAST / HOST_TEST 時は短縮版に切り替わる。
@@ -69,7 +69,10 @@ public:
     int       wool()        const { return _wool; }
     bool      sleeping()    const { return _sleeping; }
     int       walkX()       const { return _walk_x; }
+    int       walkTick()    const { return _walk_tick; }   // アクション中のアニメ進行用 (0..40)
     int       menuCursor()  const { return _menu_cursor; }
+    bool      leftHeld()    const { return _left_held; }   // 押下中はステータス overlay を出す
+    void      setLeftHeld(bool h) { _left_held = h; }      // main 側で毎フレーム反映
     int       graveCount()  const { return _grave_count; }
     const GraveRecord& grave(int i) const { return _graves[i]; }
     uint32_t  ageTicks()    const { return _age_ticks; }   // テスト用
@@ -118,6 +121,7 @@ private:
 
     Screen     _screen;
     int        _menu_cursor;
+    bool       _left_held;            // LEFT ボタンを押下中か（ステータス表示用）
 
     GraveRecord _graves[MAX_GRAVES];
     int         _grave_count;

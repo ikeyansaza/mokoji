@@ -45,10 +45,12 @@ void Sound::mee() {
 }
 
 void Sound::mog() {
-    for (int i = 0; i < 3; ++i) {
-        beep(300, 50);
-        sleep_ms(30);
-    }
+    // 300→350→300 で「もぐもぐ」感を出す音階変化
+    beep(300, 50);
+    sleep_ms(30);
+    beep(350, 50);
+    sleep_ms(30);
+    beep(300, 50);
 }
 
 void Sound::joki() {
