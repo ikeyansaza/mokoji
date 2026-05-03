@@ -23,3 +23,8 @@ mokoji_save.json
 
 # Claude Code セッションメタデータ
 .claude/
+
+# 実機検証時の作業写真（個人ファイル、リポジトリには含めない）
+PXL_*.jpg
+PXL_*.jpeg
+*.HEIC
