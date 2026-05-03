@@ -10,10 +10,12 @@
 namespace {
 constexpr uint PIN_SDA        = 16;
 constexpr uint PIN_SCL        = 17;
-constexpr uint PIN_BTN_LEFT   = 10;
-constexpr uint PIN_BTN_CENTER = 11;
-constexpr uint PIN_BTN_RIGHT  = 12;
-constexpr uint PIN_BUZZER     = 15;
+// ボタン・ブザーは Pico 右側ピン（H/I/J 列からアクセス可能）に変更
+// ※ 左側 GPIO は Pico 本体が B-E 列を覆っているためジャンパー挿入不可
+constexpr uint PIN_BTN_LEFT   = 21;  // 行 14 右側 (H14)
+constexpr uint PIN_BTN_CENTER = 20;  // 行 15 右側 (H15)
+constexpr uint PIN_BTN_RIGHT  = 19;  // 行 16 右側 (H16)
+constexpr uint PIN_BUZZER     = 18;  // 行 17 右側 (H17)
 
 constexpr uint32_t TICK_MS                = 50;            // 約 20 fps
 // 状態が変わった時の最短セーブ間隔（連打などで頻繁に書かないようにする rate limit）
