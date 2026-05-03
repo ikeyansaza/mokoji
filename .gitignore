@@ -17,6 +17,10 @@ build_fast/
 .vscode/
 *.swp
 
+# Python キャッシュ（sprites_gen.py 実行時に生成される）
+__pycache__/
+*.pyc
+
 # セーブデータ（実機に書かれるバイナリ、リポジトリには含めない）
 *.save
 mokoji_save.json
