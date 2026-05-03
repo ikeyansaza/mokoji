@@ -28,3 +28,7 @@ mokoji_save.json
 PXL_*.jpg
 PXL_*.jpeg
 *.HEIC
+photo/
+
+# 社外公開用のブログ記事ドラフト（公開先で管理するため、リポジトリには含めない）
+article_draft.md
