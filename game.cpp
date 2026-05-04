@@ -167,17 +167,15 @@ void Game::tick() {
             _hunger = std::max(0, _hunger - dec);
             _happy  = std::max(0, _happy  - dec);
         }
-        // 系統に応じて毛 or 角を伸ばす（成体のみ）
+        // 系統に応じて毛 or 角を伸ばす（系統別の手入れ対象だけ伸びる仕様）
+        // ワイルド系は wool 伸びない（CUT 不可なので溜まり続けてしまうバグ防止）。
         Family fam = family();
-        if (_stage == Stage::ADULT) {
-            if (fam == Family::MOKO || fam == Family::SUFFOLK) {
-                _wool = std::min(100, _wool + 2);
-            } else if (fam == Family::WILD) {
-                _horn = std::min(100, _horn + 2);
-            }
+        int adult_grow = (_stage == Stage::ADULT) ? 2 : 1;
+        if (fam == Family::WILD) {
+            _horn = std::min(100, _horn + adult_grow);
         } else {
-            // BABY/YOUNG は毛も少し伸びる（演出用）
-            _wool = std::min(100, _wool + 1);
+            // BABY (NONE) / YOUNG_MOKO / YOUNG_SUFFOLK / ADULT MOKO/SUFFOLK
+            _wool = std::min(100, _wool + adult_grow);
         }
 
         // 睡眠度の更新は「ゲーム内 1 時間ごと」にゲート。
