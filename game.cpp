@@ -393,6 +393,7 @@ void Game::evolveYoung() {
         _stage = Stage::YOUNG_SUFFOLK;
     } else {
         _stage = Stage::YOUNG_WILD;
+        _wool = 0;   // ワイルド系は wool 概念がない、BABY 時代の蓄積をリセット
     }
     _dirty = true;
     if (_sound) _sound->happy();

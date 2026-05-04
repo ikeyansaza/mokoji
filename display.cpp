@@ -34,7 +34,11 @@ void Display::drawMain(const Game& g) {
     auto sprite = selectSprite(g, g.face());
     _oled->drawSprite2x(sprite, sx, sy);
 
-    if (g.wool() > 30) drawWool(g.wool(), sx);
+    // 毛キラキラはモコ・サフォーク系のみ（ワイルド系は wool 概念がないため非表示）。
+    // 旧 save / BABY 時代に溜まった wool が YOUNG_WILD に持ち越されてもキラキラを出さない。
+    if (g.wool() > 30 && g.family() != Game::Family::WILD) {
+        drawWool(g.wool(), sx);
+    }
     drawActionFx(g);
 
     // 表情オーバーレイは SVG 参考デザインに合わせて当面オフ（スプライト自体に
