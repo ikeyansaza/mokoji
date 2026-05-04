@@ -42,6 +42,7 @@ const char* Game::breedSlug(Breed b) {
     switch (b) {
         case Breed::MERINO:     return "MERI";
         case Breed::CORRIEDALE: return "CORR";
+        case Breed::LINCOLN:    return "LINC";
         case Breed::SUFFOLK:    return "SUFF";
         case Breed::HAMPSHIRE:  return "HAMP";
         case Breed::MOUFLON:    return "MOUF";
@@ -58,7 +59,8 @@ Game::Family Game::family() const {
         case Stage::ADULT:
             switch (_breed) {
                 case Breed::MERINO:
-                case Breed::CORRIEDALE: return Family::MOKO;
+                case Breed::CORRIEDALE:
+                case Breed::LINCOLN:    return Family::MOKO;
                 case Breed::SUFFOLK:
                 case Breed::HAMPSHIRE:  return Family::SUFFOLK;
                 case Breed::MOUFLON:
@@ -402,11 +404,14 @@ void Game::evolveAdult() {
     int total = _tend_feed + _tend_pet + _tend_shear + _tend_polish + 1;
 
     if (_stage == Stage::YOUNG_MOKO) {
-        // モコ系：feed 多めで MERINO（毛量重視）、pet 多めで CORRIEDALE（バランス）
-        int merino_w     = 50 + _tend_feed * 50 / total;
-        int corriedale_w = 50 + _tend_pet  * 50 / total;
-        int roll = rand8() % (merino_w + corriedale_w);
-        _breed = (roll < merino_w) ? Breed::MERINO : Breed::CORRIEDALE;
+        // モコ系：feed 多めで MERINO（毛量重視）、pet 多めで CORRIEDALE、shear 多めで LINCOLN（長毛）
+        int merino_w     = 50 + _tend_feed  * 50 / total;
+        int corriedale_w = 50 + _tend_pet   * 50 / total;
+        int lincoln_w    = 50 + _tend_shear * 50 / total;
+        int roll = rand8() % (merino_w + corriedale_w + lincoln_w);
+        if (roll < merino_w)                           _breed = Breed::MERINO;
+        else if (roll < merino_w + corriedale_w)       _breed = Breed::CORRIEDALE;
+        else                                           _breed = Breed::LINCOLN;
     } else if (_stage == Stage::YOUNG_SUFFOLK) {
         // サフォーク系：pet 多めで SUFFOLK（人懐っこい）、feed+pet で HAMPSHIRE（強化版）
         int suffolk_w   = 50 + _tend_pet * 50 / total;

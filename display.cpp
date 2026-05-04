@@ -222,6 +222,13 @@ const uint8_t (*Display::selectSprite(const Game& g, Game::Face face))[3] {
                         L = ADULT_CORRIEDALE_L; F = ADULT_CORRIEDALE_F; R = ADULT_CORRIEDALE_R;
                     }
                     break;
+                case Game::Breed::LINCOLN:
+                    if (fluffy) {
+                        L = ADULT_LINCOLN_FLUFFY_L; F = ADULT_LINCOLN_FLUFFY_F; R = ADULT_LINCOLN_FLUFFY_R;
+                    } else {
+                        L = ADULT_LINCOLN_L; F = ADULT_LINCOLN_F; R = ADULT_LINCOLN_R;
+                    }
+                    break;
                 case Game::Breed::SUFFOLK:
                     if (fluffy) {
                         L = ADULT_SUFFOLK_FLUFFY_L; F = ADULT_SUFFOLK_FLUFFY_F; R = ADULT_SUFFOLK_FLUFFY_R;

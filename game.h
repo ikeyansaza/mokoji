@@ -18,12 +18,12 @@ public:
         STATUS = 0,   // 餓死 / 不幸死
         AGE    = 1    // 天寿
     };
-    // 6 品種：モコ系 2 + サフォーク系 2 + ワイルド系 2
+    // 7 品種：モコ系 3 + サフォーク系 2 + ワイルド系 2
     enum class Breed : uint8_t {
         NONE,
-        MERINO, CORRIEDALE,    // モコ系
-        SUFFOLK, HAMPSHIRE,    // サフォーク系
-        MOUFLON, BIGHORN,      // ワイルド系
+        MERINO, CORRIEDALE, LINCOLN,   // モコ系
+        SUFFOLK, HAMPSHIRE,            // サフォーク系
+        MOUFLON, BIGHORN,              // ワイルド系
     };
     // 系統（Stage / Breed から導出可能）
     enum class Family : uint8_t { NONE, MOKO, SUFFOLK, WILD };
