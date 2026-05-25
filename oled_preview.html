@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <title>mokomoko OLED Preview</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500&display=swap');
+
+        :root {
+            --bg: #0a0a0a;
+            --panel: #111;
+            --border: #222;
+            --text: #888;
+            --text-hi: #ccc;
+            --accent: #4af;
+            --oled-on: #c8e8ff;
+            --oled-off: #050d14;
+            --oled-border: #1a3a5a;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 12px;
+            min-height: 100vh;
+            padding: 24px;
+        }
+
+        header {
+            display: flex;
+            align-items: baseline;
+            gap: 16px;
+            margin-bottom: 24px;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 12px;
+        }
+
+        header h1 {
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-hi);
+            letter-spacing: .08em;
+        }
+
+        #status {
+            font-size: 11px;
+            color: var(--text);
+        }
+
+        #status.ok {
+            color: #4a4;
+        }
+
+        #status.err {
+            color: #a44;
+        }
+
+        .layout {
+            display: flex;
+            gap: 24px;
+            flex-wrap: wrap;
+        }
+
+        /* ── ペースト入力 ── */
+        #input-col {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            flex: 1 1 340px;
+            min-width: 280px;
+        }
+
+        label {
+            font-size: 11px;
+            color: var(--text);
+        }
+
+        textarea {
+            width: 100%;
+            height: 480px;
+            background: var(--panel);
+            border: 1px solid var(--border);
+            color: #9cf;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 11px;
+            line-height: 1.5;
+            padding: 10px;
+            resize: vertical;
+            outline: none;
+            border-radius: 3px;
+        }
+
+        textarea:focus {
+            border-color: var(--accent);
+        }
+
+        .btn-row {
+            display: flex;
+            gap: 8px;
+        }
+
+        button {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 11px;
+            padding: 5px 14px;
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text-hi);
+            cursor: pointer;
+            border-radius: 3px;
+            letter-spacing: .04em;
+            transition: border-color .15s, color .15s;
+        }
+
+        button:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        button.primary {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        /* ── プレビューパネル ── */
+        #preview-col {
+            flex: 1 1 460px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .section-label {
+            font-size: 10px;
+            color: var(--text);
+            letter-spacing: .1em;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+        }
+
+        /* ── OLED風ディスプレイ ── */
+        .oled-outer {
+            background: #181c20;
+            border: 2px solid #2a2e34;
+            border-radius: 8px;
+            padding: 20px 24px 16px;
+            display: inline-flex;
+            flex-direction: column;
+            gap: 10px;
+            box-shadow: 0 4px 32px rgba(0, 0, 0, .6), inset 0 1px 0 rgba(255, 255, 255, .04);
+        }
+
+        .oled-label-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 10px;
+            color: #3a4a5a;
+            letter-spacing: .1em;
+        }
+
+        .oled-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #1a3a1a;
+        }
+
+        .oled-wrap {
+            background: #020608;
+            border: 2px solid #0a1a28;
+            border-radius: 3px;
+            box-shadow:
+                inset 0 0 12px rgba(0, 0, 0, .8),
+                0 0 0 1px #000,
+                0 0 40px rgba(74, 170, 255, .12),
+                0 0 80px rgba(74, 170, 255, .04);
+            padding: 10px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        canvas {
+            image-rendering: pixelated;
+            display: block;
+        }
+
+        /* ── スプライト一覧 ── */
+        #sprite-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .sprite-card {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 3px;
+            padding: 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            align-items: center;
+            cursor: pointer;
+            transition: border-color .15s;
+        }
+
+        .sprite-card:hover,
+        .sprite-card.active {
+            border-color: var(--accent);
+        }
+
+        .sprite-card canvas {
+            image-rendering: pixelated;
+        }
+
+        .sprite-card .name {
+            font-size: 9px;
+            color: var(--text);
+            letter-spacing: .04em;
+            max-width: 80px;
+            text-align: center;
+            word-break: break-all;
+        }
+
+        /* ── アニメ コントロール ── */
+        .anim-ctrl {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .anim-ctrl select,
+        .anim-ctrl input[type=range] {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 11px;
+            background: var(--panel);
+            border: 1px solid var(--border);
+            color: var(--text-hi);
+            padding: 3px 6px;
+            border-radius: 3px;
+        }
+
+        #fps-val {
+            min-width: 24px;
+        }
+
+        /* ── ピクセルグリッド拡大 ── */
+        #zoom-wrap {
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+            align-items: flex-start;
+        }
+
+        .zoom-item {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            align-items: center;
+        }
+
+        .zoom-label {
+            font-size: 9px;
+            color: var(--text);
+            letter-spacing: .06em;
+        }
+    </style>
+</head>
+
+<body>
+
+    <header>
+        <h1>mokomoko / OLED preview</h1>
+        <span id="status">待機中</span>
+    </header>
+
+    <div class="layout">
+
+        <!-- 左: 入力 -->
+        <div id="input-col">
+            <label>sprites.py の中身をここにペースト（HITSUJI など tuple / _img() 両対応）</label>
+            <textarea id="src" spellcheck="false" placeholder='HITSUJI = (
+    "........................",
+    "......###########.......",
+    ...
+)
+
+# または _img() 形式も可
+LAMB_F = _img(
+    "........................",
+    ...
+)'></textarea>
+            <div class="btn-row">
+                <button class="primary" onclick="parse()">▶ parse &amp; preview</button>
+                <button onclick="clearAll()">clear</button>
+                <button onclick="loadSample()">load sample</button>
+            </div>
+            <div id="parse-log" style="font-size:10px;color:#666;margin-top:4px;line-height:1.7"></div>
+        </div>
+
+        <!-- 右: プレビュー -->
+        <div id="preview-col">
+
+            <!-- OLED シミュレータ -->
+            <div>
+                <div class="section-label">OLED simulator</div>
+                <div class="oled-outer">
+                    <div class="oled-label-row">
+                        <span>SSD1306 · 0.96" · 128×64</span>
+                        <div class="oled-dot" id="power-dot"></div>
+                    </div>
+                    <div class="oled-wrap">
+                        <canvas id="oled" width="768" height="384" style="width:768px;height:384px"></canvas>
+                    </div>
+                    <div class="oled-label-row" style="justify-content:center;font-size:9px;letter-spacing:.14em">
+                        mokomoko device
+                    </div>
+                </div>
+            </div>
+
+            <!-- アニメ コントロール -->
+            <div>
+                <div class="section-label">animation</div>
+                <div class="anim-ctrl">
+                    <span>sprite</span>
+                    <select id="anim-sel"></select>
+                    <button id="btn-play" onclick="togglePlay()">▶ play</button>
+                    <span>fps</span>
+                    <input type="range" id="fps" min="1" max="16" value="4"
+                        oninput="document.getElementById('fps-val').textContent=this.value;restartTimer()">
+                    <span id="fps-val">4</span>
+                    <span id="frame-counter" style="color:#555">f0</span>
+                </div>
+            </div>
+
+            <!-- ズーム比較 -->
+            <div>
+                <div class="section-label">zoom — 1x / 2x / 4x</div>
+                <div id="zoom-wrap"></div>
+            </div>
+
+            <!-- スプライト一覧 -->
+            <div>
+                <div class="section-label">all sprites</div>
+                <div id="sprite-list"></div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        const LS_SRC = 'mokomoko_src';
+        const LS_SEL = 'mokomoko_selected';
+
+        let sprites = {};
+        let animTimer = null;
+        let animFrame = 0;
+        let playing = false;
+        let selectedName = null;
+
+        // ── localStorage ──────────────────────────────
+        function saveSrc() {
+            try { localStorage.setItem(LS_SRC, document.getElementById('src').value); } catch (e) { }
+        }
+        function saveSel(name) {
+            try { localStorage.setItem(LS_SEL, name); } catch (e) { }
+        }
+        function clearStorage() {
+            try { localStorage.removeItem(LS_SRC); localStorage.removeItem(LS_SEL); } catch (e) { }
+        }
+
+        // ── パーサ ──────────────────────────────────────
+        function parseSrc(src) {
+            const result = {};
+            const tupleRe = /([A-Z][A-Z0-9_]*)\s*=\s*[\(\[]([\s\S]*?)[\)\]]/g;
+            const imgRe = /([A-Z][A-Z0-9_]*)\s*=\s*_img\s*\(([\s\S]*?)\)/g;
+
+            function extractRows(body) {
+                const rows = [];
+                const re = /"([^"]{1,32})"/g;
+                let m;
+                while ((m = re.exec(body)) !== null) {
+                    const s = m[1].padEnd(24, '.').slice(0, 24);
+                    rows.push([...s].map(c => c === '#' ? 1 : 0));
+                }
+                return rows.length === 24 ? rows : null;
+            }
+
+            for (const re of [tupleRe, imgRe]) {
+                let m;
+                while ((m = re.exec(src)) !== null) {
+                    const rows = extractRows(m[2]);
+                    if (rows) result[m[1]] = rows;
+                }
+            }
+            return result;
+        }
+
+        // ── 描画ヘルパー ──────────────────────────────────
+        function drawSprite(ctx, sp, scale, ox = 0, oy = 0, fg = '#c8e8ff', bg = '#050d14') {
+            ctx.fillStyle = bg;
+            ctx.fillRect(ox, oy, 24 * scale, 24 * scale);
+            ctx.fillStyle = fg;
+            for (let y = 0; y < 24; y++)
+                for (let x = 0; x < 24; x++)
+                    if (sp[y][x]) ctx.fillRect(ox + x * scale, oy + y * scale, scale, scale);
+        }
+
+        function drawOLED(sp) {
+            const c = document.getElementById('oled');
+            const ctx = c.getContext('2d');
+            ctx.fillStyle = '#020608';
+            ctx.fillRect(0, 0, 768, 384);
+            if (!sp) return;
+            const SCALE = 6, W = 768, H = 384;
+            const ox = Math.round((W - 24 * SCALE) / 2);
+            const oy = Math.round((H - 24 * SCALE) / 2);
+            ctx.fillStyle = '#c8e8ff';
+            for (let y = 0; y < 24; y++)
+                for (let x = 0; x < 24; x++)
+                    if (sp[y][x]) ctx.fillRect(ox + x * SCALE, oy + y * SCALE, SCALE, SCALE);
+            // グロー
+            ctx.globalAlpha = 0.12;
+            ctx.filter = 'blur(6px)';
+            ctx.fillStyle = '#a0d0ff';
+            for (let y = 0; y < 24; y++)
+                for (let x = 0; x < 24; x++)
+                    if (sp[y][x]) ctx.fillRect(ox + x * SCALE - 3, oy + y * SCALE - 3, SCALE + 6, SCALE + 6);
+            ctx.globalAlpha = 1;
+            ctx.filter = 'none';
+            // スキャンライン
+            ctx.fillStyle = 'rgba(0,0,0,0.22)';
+            for (let y = 0; y < H; y += 2) ctx.fillRect(0, y, W, 1);
+            document.getElementById('power-dot').style.background = '#2a6a2a';
+        }
+
+        // ── スプライトカード ──────────────────────────────
+        function buildSpriteList() {
+            const list = document.getElementById('sprite-list');
+            list.innerHTML = '';
+            const animSel = document.getElementById('anim-sel');
+            const prevAnimVal = animSel.value;
+            animSel.innerHTML = '';
+
+            Object.entries(sprites).forEach(([name, sp]) => {
+                const card = document.createElement('div');
+                card.className = 'sprite-card' + (name === selectedName ? ' active' : '');
+                const c = document.createElement('canvas');
+                c.width = 48; c.height = 48;
+                c.style.cssText = 'width:48px;height:48px;background:#050d14';
+                drawSprite(c.getContext('2d'), sp, 2, 0, 0);
+                const label = document.createElement('div');
+                label.className = 'name';
+                label.textContent = name;
+                card.appendChild(c);
+                card.appendChild(label);
+                card.addEventListener('click', () => selectSprite(name));
+                list.appendChild(card);
+
+                const opt = document.createElement('option');
+                opt.value = name; opt.textContent = name;
+                animSel.appendChild(opt);
+            });
+
+            // animation セレクトの選択を復元
+            if (prevAnimVal && sprites[prevAnimVal]) animSel.value = prevAnimVal;
+        }
+
+        function buildZoom(sp) {
+            const wrap = document.getElementById('zoom-wrap');
+            wrap.innerHTML = '';
+            [1, 2, 4].forEach(s => {
+                const div = document.createElement('div');
+                div.className = 'zoom-item';
+                const c = document.createElement('canvas');
+                c.width = 24 * s; c.height = 24 * s;
+                c.style.cssText = `width:${24 * s}px;height:${24 * s}px;background:#050d14;border:1px solid #1a3a5a`;
+                drawSprite(c.getContext('2d'), sp, s, 0, 0);
+                const lb = document.createElement('div');
+                lb.className = 'zoom-label';
+                lb.textContent = `${s}x`;
+                div.appendChild(c); div.appendChild(lb);
+                wrap.appendChild(div);
+            });
+        }
+
+        function selectSprite(name) {
+            selectedName = name;
+            document.querySelectorAll('.sprite-card').forEach(el => {
+                el.classList.toggle('active', el.querySelector('.name').textContent === name);
+            });
+            drawOLED(sprites[name]);
+            buildZoom(sprites[name]);
+            document.getElementById('anim-sel').value = name;
+            saveSel(name); // 選択をlocalStorageに保存
+        }
+
+        // ── アニメ ──────────────────────────────────────
+        function getAnimNames() {
+            const sel = document.getElementById('anim-sel').value;
+            const base = sel.replace(/[_]?[FLR\d]+$/, '');
+            const group = Object.keys(sprites).filter(n => n.startsWith(base) || n === sel);
+            return group.length >= 2 ? group : Object.keys(sprites).slice(0, Math.min(4, Object.keys(sprites).length));
+        }
+
+        function tickAnim() {
+            const names = getAnimNames();
+            if (!names.length) return;
+            animFrame = (animFrame + 1) % names.length;
+            document.getElementById('frame-counter').textContent = `f${animFrame}`;
+            drawOLED(sprites[names[animFrame]]);
+        }
+
+        function togglePlay() {
+            playing = !playing;
+            document.getElementById('btn-play').textContent = playing ? '⏹ stop' : '▶ play';
+            if (playing) restartTimer(); else { clearInterval(animTimer); animTimer = null; }
+        }
+
+        function restartTimer() {
+            clearInterval(animTimer);
+            if (!playing) return;
+            const fps = parseInt(document.getElementById('fps').value) || 4;
+            animTimer = setInterval(tickAnim, 1000 / fps);
+        }
+
+        // ── parse ──────────────────────────────────────
+        function parse() {
+            const src = document.getElementById('src').value;
+            const log = document.getElementById('parse-log');
+            const status = document.getElementById('status');
+
+            if (!src.trim()) {
+                status.textContent = 'テキストが空です';
+                status.className = 'err';
+                return;
+            }
+
+            const prevSelected = selectedName; // parse前の選択を記憶
+
+            sprites = parseSrc(src);
+            const names = Object.keys(sprites);
+
+            if (!names.length) {
+                status.textContent = 'スプライトが見つかりませんでした';
+                status.className = 'err';
+                log.textContent = '形式を確認: NAME = ( "###...", ... ) か _img("###...", ...) ';
+                return;
+            }
+
+            status.textContent = `✓ ${names.length} sprites loaded`;
+            status.className = 'ok';
+            log.textContent = names.join('  ');
+
+            saveSrc(); // localStorageに保存
+
+            buildSpriteList();
+
+            // 以前の選択が引き続き存在すれば維持、なければ先頭
+            const toSelect = (prevSelected && sprites[prevSelected]) ? prevSelected : names[0];
+            selectSprite(toSelect);
+        }
+
+        function clearAll() {
+            document.getElementById('src').value = '';
+            sprites = {};
+            selectedName = null;
+            document.getElementById('sprite-list').innerHTML = '';
+            document.getElementById('zoom-wrap').innerHTML = '';
+            document.getElementById('anim-sel').innerHTML = '';
+            document.getElementById('parse-log').textContent = '';
+            document.getElementById('status').textContent = '待機中';
+            document.getElementById('status').className = '';
+            drawOLED(null);
+            clearStorage();
+        }
+
+        function loadSample() {
+            document.getElementById('src').value = `HITSUJI = (
+    "........................",
+    "........................",
+    "........................",
+    "........................",
+    "..........#.#...........",
+    "........#######.........",
+    "......###########.......",
+    ".....###...#...###......",
+    "......#..#####..#.......",
+    "...###.#########.###....",
+    "......###########.......",
+    "....#.#...###...#.#.....",
+    "...##.###########.##....",
+    "....#.###########.#.....",
+    "....##.#########.##.....",
+    "....##.###.#.###.##.....",
+    ".....##.###.###.##......",
+    ".....###.......###......",
+    "......###########.......",
+    "........##..#.#.........",
+    "........................",
+    "........................",
+    "........................",
+    "........................",
+)`;
+            parse();
+        }
+
+        // ── 起動: localStorageから復元 ──────────────────
+        drawOLED(null);
+
+        document.getElementById('src').addEventListener('keydown', e => {
+            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) parse();
+        });
+
+        // 入力のたびに随時保存
+        document.getElementById('src').addEventListener('input', saveSrc);
+
+        // 起動時に保存済みデータを復元
+        try {
+            const savedSrc = localStorage.getItem(LS_SRC);
+            const savedSel = localStorage.getItem(LS_SEL);
+            if (savedSrc) {
+                document.getElementById('src').value = savedSrc;
+                sprites = parseSrc(savedSrc);
+                const names = Object.keys(sprites);
+                if (names.length) {
+                    document.getElementById('status').textContent = `✓ ${names.length} sprites restored`;
+                    document.getElementById('status').className = 'ok';
+                    document.getElementById('parse-log').textContent = names.join('  ');
+                    selectedName = (savedSel && sprites[savedSel]) ? savedSel : names[0];
+                    buildSpriteList();
+                    selectSprite(selectedName);
+                }
+            }
+        } catch (e) { }
+    </script>
+</body>
+
+</html>
