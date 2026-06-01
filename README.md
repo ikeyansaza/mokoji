@@ -2,7 +2,7 @@
 
 > モコモコな羊の略。めん羊育成デバイス。
 
-Raspberry Pi Pico + OLED で動く、たまごっち型の羊育成ゲーム。
+Raspberry Pi Pico + OLED で動く、携帯型の羊育成ゲーム。
 お世話の仕方によって毎回違う品種の羊に育つ。
 
 C++ (Pico SDK) で実装。

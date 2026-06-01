@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## プロジェクト概要
 
-MOKOJI — Raspberry Pi Pico + SSD1306 OLED で動くたまごっち型の羊育成デバイス。C++17 / Pico SDK。
+MOKOJI — Raspberry Pi Pico + SSD1306 OLED で動く携帯型の羊育成ゲームデバイス。C++17 / Pico SDK。
 携帯版 v1.0 で XIAO RP2350 + PlatformIO に移行予定（計画書: `docs/v1.0_plan.md`）。
 
 ## ビルド・テスト
@@ -31,7 +31,7 @@ cd test && make test
 - コミットメッセージは日本語
 - mainへの直接pushは、E2E修正やtypo修正など軽微な1コミットの場合のみ許可
 - テストを書いてからコードを実装する（TDD）
-- ライセンス: Private / All rights reserved
+- ライセンス: © 2026 Naofumi Ikeda — All rights reserved（詳細は LICENSE）
 
 ## アーキテクチャ
 
