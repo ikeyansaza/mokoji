@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## プロジェクト概要
 
 MOKOJI — Raspberry Pi Pico + SSD1306 OLED で動く携帯型の羊育成ゲームデバイス。C++17 / Pico SDK。
-携帯版 v1.0 で XIAO RP2350 + PlatformIO に移行予定（計画書: `docs/v1.0_plan.md`）。
+携帯版 v1.0 で XIAO RP2350 + PlatformIO に移行予定。
 
 ## ビルド・テスト
 
