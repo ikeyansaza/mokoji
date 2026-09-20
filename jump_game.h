@@ -54,7 +54,7 @@ public:
     uint32_t overSinceMs()     const { return _over_since_ms; }
     uint32_t nowMs()           const { return _sim_ms; }
     const Fence& fence(int i)  const { return _fences[i]; }
-    int      fenceCenterX(int i) const;   // 描画用。柵の中心の x（_sim_ms 基準）
+    int      fenceCenterX(int i) const;   // 描画用。柵の中心の x（OVER のあいだはミスした時刻で止まる）
 
     static int      bpmForScore(int score);
     static uint32_t beatMsForScore(int score);

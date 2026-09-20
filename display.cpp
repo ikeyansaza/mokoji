@@ -177,6 +177,21 @@ void Display::drawMenu(const Game& g) {
     }
 }
 
+// スプライトの非空白部分の最下行（rotCW のときは回転後の最下行）。スプライトは下に余白を
+// 持つので、これで地面に接地させる（余白のまま置くと羊が浮いて見える）。
+static int spriteBottom(const uint8_t (*sp)[3], bool rotCW) {
+    int bottom = 0;
+    for (int r = 0; r < 24; ++r) {
+        for (int c = 0; c < 24; ++c) {
+            if ((sp[r][c >> 3] >> (7 - (c & 7))) & 1) {
+                int y = rotCW ? c : r;   // 時計回り 90° では、元の col が回転後の row になる
+                if (y > bottom) bottom = y;
+            }
+        }
+    }
+    return bottom;
+}
+
 // ミニゲーム「柵を跳ぶ羊」。地面 y=52、羊は x=16 に 24x24 で立つ。
 void Display::drawMinigame(const Game& g) {
     const JumpGame& j = g.jump();
@@ -185,17 +200,43 @@ void Display::drawMinigame(const Game& g) {
 
     _oled->fillRect(0, GROUND_Y, SSD1306::W, 1, true);
 
-    // 羊（ジャンプ中は高さぶん持ち上げる）。終了時は地面に立たせたまま。
+    const bool over = (j.state() == JumpGame::State::OVER);
     auto sprite = selectSprite(g, Game::Face::RIGHT);
-    _oled->drawSprite(sprite, JumpGame::SHEEP_X, GROUND_Y - 24 - j.sheepHeight());
+    if (over) {
+        // 転んだ羊：スプライトを時計回りに 90° 回して地面に横たえる
+        int top = GROUND_Y - 1 - spriteBottom(sprite, true);
+        _oled->drawSpriteRotCW(sprite, JumpGame::SHEEP_X, top);
+    } else {
+        // ジャンプ中は高さぶん持ち上げる
+        int top = GROUND_Y - 1 - spriteBottom(sprite, false);
+        _oled->drawSprite(sprite, JumpGame::SHEEP_X, top - j.sheepHeight());
+    }
+
+    // ぶつかった柵：終了時に当たり判定の範囲にある、羊に最も近い 1 本
+    int hit = -1;
+    if (over) {
+        int best = (JumpGame::FENCE_W + JumpGame::HITBOX_W) / 2;
+        for (int i = 0; i < JumpGame::MAX_FENCES; ++i) {
+            if (!j.fence(i).used) continue;
+            int dx = j.fenceCenterX(i) - JumpGame::HITBOX_CENTER_X;
+            if (dx < 0) dx = -dx;
+            if (dx < best) { best = dx; hit = i; }
+        }
+    }
 
     // 柵：中心 x から幅 FENCE_W・高さ FENCE_H の長方形。画面外のものは描かない。
+    // ぶつかった柵は倒れた（横向きの）長方形にする。
     for (int i = 0; i < JumpGame::MAX_FENCES; ++i) {
         if (!j.fence(i).used) continue;
         int cx = j.fenceCenterX(i);
-        if (cx < -JumpGame::FENCE_W || cx > SSD1306::W + JumpGame::FENCE_W) continue;
-        _oled->fillRect(cx - JumpGame::FENCE_W / 2, GROUND_Y - JumpGame::FENCE_H,
-                        JumpGame::FENCE_W, JumpGame::FENCE_H, true);
+        if (cx < -JumpGame::FENCE_H || cx > SSD1306::W + JumpGame::FENCE_W) continue;
+        if (i == hit) {
+            _oled->fillRect(cx - JumpGame::FENCE_H / 2, GROUND_Y - JumpGame::FENCE_W,
+                            JumpGame::FENCE_H, JumpGame::FENCE_W, true);
+        } else {
+            _oled->fillRect(cx - JumpGame::FENCE_W / 2, GROUND_Y - JumpGame::FENCE_H,
+                            JumpGame::FENCE_W, JumpGame::FENCE_H, true);
+        }
     }
 
     switch (j.state()) {
@@ -220,6 +261,10 @@ void Display::drawMinigame(const Game& g) {
             std::snprintf(buf, sizeof(buf), "しあわせ +%d", g.miniReward());
             w = font::textWidth(buf);
             _oled->drawText(buf, (SSD1306::W - w) / 2, 19);
+            // ふらふらの星：約 0.2 秒ごとに 2 コマで入れ替わる（羊の右側）
+            const int phase = int((j.nowMs() / 200) & 1u);
+            _oled->drawText("*", phase ? 46 : 42, 32);
+            _oled->drawText("*", phase ? 42 : 46, 42);
             break;
         }
         default:

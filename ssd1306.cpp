@@ -82,6 +82,17 @@ void SSD1306::drawSprite(const uint8_t sprite[24][3], int x, int y) {
     drawSpriteRaw(reinterpret_cast<const uint8_t*>(sprite), 24, 24, 3, x, y);
 }
 
+void SSD1306::drawSpriteRotCW(const uint8_t sprite[24][3], int x, int y) {
+    // 元の (row, col) は、時計回り 90° で (x + 23 - row, y + col) に移る。
+    for (int row = 0; row < 24; ++row) {
+        for (int col = 0; col < 24; ++col) {
+            if ((sprite[row][col >> 3] >> (7 - (col & 7))) & 1) {
+                setPixel(x + (23 - row), y + col, true);
+            }
+        }
+    }
+}
+
 void SSD1306::drawSprite2x(const uint8_t sprite[24][3], int x, int y) {
     // 24x24 ソースを 48x48 出力で描画。各ピクセル = 2x2 ブロック。
     for (int row = 0; row < 24; ++row) {

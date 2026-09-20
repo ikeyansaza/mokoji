@@ -54,7 +54,9 @@ uint32_t JumpGame::nextRand() {
 int JumpGame::fenceCenterX(int i) const {
     // 柵の中心は、拍の JUMP_AIR_MS/2 後に羊の当たり判定の中心へ届く。
     uint32_t cross = _fences[i].beat_ms + JUMP_AIR_MS / 2;
-    return HITBOX_CENTER_X + int(int64_t(SCROLL_PPS) * diff(cross, _sim_ms) / 1000);
+    // ミスしたあとは場面を止める（ぶつかった柵がその場に残り、終了画面で倒れた柵として描ける）
+    uint32_t now = (_state == State::OVER) ? _over_since_ms : _sim_ms;
+    return HITBOX_CENTER_X + int(int64_t(SCROLL_PPS) * diff(cross, now) / 1000);
 }
 
 void JumpGame::step(uint32_t now_ms) { advanceTo(now_ms); }

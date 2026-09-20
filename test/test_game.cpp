@@ -683,6 +683,27 @@ static void test_time_wraparound() {
     assert(wrap.overSinceMs() - 0xFFFFFF00u == base.overSinceMs());
 }
 
+static void test_fence_positions_freeze_after_over() {
+    // ミスしたあとは場面を止める（ぶつかった柵が流れ去らず、その場に残る）
+    JG j;
+    j.start(0, 1);
+    jg_run(j, 0, jg_first_beat(0) + 600, 5);
+    assert(j.state() == JG::State::OVER);
+    int x[JG::MAX_FENCES];
+    for (int i = 0; i < JG::MAX_FENCES; ++i) x[i] = j.fenceCenterX(i);
+    j.step(j.nowMs() + 1000);
+    for (int i = 0; i < JG::MAX_FENCES; ++i) assert(j.fenceCenterX(i) == x[i]);
+    // ぶつかった柵は当たり判定の範囲内に残っている
+    bool near_hitbox = false;
+    for (int i = 0; i < JG::MAX_FENCES; ++i) {
+        if (!j.fence(i).used) continue;
+        int dx = j.fenceCenterX(i) - JG::HITBOX_CENTER_X;
+        if (dx < 0) dx = -dx;
+        if (dx < (JG::FENCE_W + JG::HITBOX_W) / 2) near_hitbox = true;
+    }
+    assert(near_hitbox);
+}
+
 static void test_events_emitted_once() {
     JG j;
     j.start(0, 1);
@@ -868,6 +889,7 @@ int main() {
     RUN(test_same_seed_same_fences);
     RUN(test_step_granularity_independent);
     RUN(test_time_wraparound);
+    RUN(test_fence_positions_freeze_after_over);
     RUN(test_events_emitted_once);
     RUN(test_minigame_starts_from_menu);
     RUN(test_minigame_reward_and_hunger_cost);

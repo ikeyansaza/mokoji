@@ -21,6 +21,8 @@ public:
     void drawSpriteRaw(const uint8_t* sprite, int w, int h, int row_bytes, int x, int y);
     // 後方互換用：24x24
     void drawSprite(const uint8_t sprite[24][3], int x, int y);
+    // 時計回りに 90° 回転して描画（24x24 のまま）。倒れた羊の表現に使う。
+    void drawSpriteRotCW(const uint8_t sprite[24][3], int x, int y);
     // 2 倍スケール描画：1 ピクセルを 2x2 ブロックとして描く
     void drawSprite2x(const uint8_t sprite[24][3], int x, int y);
     // UTF-8 文字列を描く。ASCII は 5x7（字送り 6px）、それ以外は 8x8 の日本語（字送り 8px、
