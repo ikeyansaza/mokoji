@@ -14,6 +14,7 @@ private:
     void drawMenu(const Game& g);
     void drawSleep(const Game& g);
     void drawNameInput(const uint8_t* buffer);
+    void drawMinigame(const Game& g);
     void drawGrave(const Game& g);
     void drawNaming(const Game& g);
 

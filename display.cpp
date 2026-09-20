@@ -21,7 +21,7 @@ void Display::draw(const Game& g) {
         case Game::Screen::MENU:   drawMenu(g);   break;
         case Game::Screen::GRAVE:  drawGrave(g);  break;
         case Game::Screen::NAMING: drawNaming(g); break;
-        case Game::Screen::MINIGAME: break;   // 仮置き（次のタスクで描画を実装）
+        case Game::Screen::MINIGAME: drawMinigame(g); break;
     }
 }
 
@@ -174,6 +174,56 @@ void Display::drawMenu(const Game& g) {
         } else {
             _oled->fillRect(cx - 1, 53, 2, 2, true);
         }
+    }
+}
+
+// ミニゲーム「柵を跳ぶ羊」。地面 y=52、羊は x=16 に 24x24 で立つ。
+void Display::drawMinigame(const Game& g) {
+    const JumpGame& j = g.jump();
+    constexpr int GROUND_Y = 52;
+    char buf[24];
+
+    _oled->fillRect(0, GROUND_Y, SSD1306::W, 1, true);
+
+    // 羊（ジャンプ中は高さぶん持ち上げる）。終了時は地面に立たせたまま。
+    auto sprite = selectSprite(g, Game::Face::RIGHT);
+    _oled->drawSprite(sprite, JumpGame::SHEEP_X, GROUND_Y - 24 - j.sheepHeight());
+
+    // 柵：中心 x から幅 FENCE_W・高さ FENCE_H の長方形。画面外のものは描かない。
+    for (int i = 0; i < JumpGame::MAX_FENCES; ++i) {
+        if (!j.fence(i).used) continue;
+        int cx = j.fenceCenterX(i);
+        if (cx < -JumpGame::FENCE_W || cx > SSD1306::W + JumpGame::FENCE_W) continue;
+        _oled->fillRect(cx - JumpGame::FENCE_W / 2, GROUND_Y - JumpGame::FENCE_H,
+                        JumpGame::FENCE_W, JumpGame::FENCE_H, true);
+    }
+
+    switch (j.state()) {
+        case JumpGame::State::COUNTDOWN: {
+            std::snprintf(buf, sizeof(buf), "%d", j.countdownNumber());
+            constexpr int scale = 3;
+            int w = font::textWidth(buf) * scale;
+            _oled->drawText(buf, (SSD1306::W - w) / 2, 12, false, scale);
+            break;
+        }
+        case JumpGame::State::PLAYING: {
+            std::snprintf(buf, sizeof(buf), "%dひき", j.score());
+            _oled->drawText(buf, SSD1306::W - font::textWidth(buf), 0);
+            break;
+        }
+        case JumpGame::State::OVER: {
+            std::snprintf(buf, sizeof(buf), "%dひき", j.score());
+            constexpr int scale = 2;
+            int w = font::textWidth(buf) * scale;
+            _oled->drawText(buf, (SSD1306::W - w) / 2, 0, false, scale);
+            // 羊（地面に立つと y=28〜）と重ならないよう、上の 27px 以内に収める
+            std::snprintf(buf, sizeof(buf), "しあわせ +%d", g.miniReward());
+            w = font::textWidth(buf);
+            _oled->drawText(buf, (SSD1306::W - w) / 2, 19);
+            break;
+        }
+        default:
+            break;
     }
 }
 
