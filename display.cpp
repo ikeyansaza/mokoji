@@ -207,12 +207,12 @@ void Display::drawMinigame(const Game& g) {
             break;
         }
         case JumpGame::State::PLAYING: {
-            std::snprintf(buf, sizeof(buf), "%dひき", j.score());
+            std::snprintf(buf, sizeof(buf), "%d連続", j.score());
             _oled->drawText(buf, SSD1306::W - font::textWidth(buf), 0);
             break;
         }
         case JumpGame::State::OVER: {
-            std::snprintf(buf, sizeof(buf), "%dひき", j.score());
+            std::snprintf(buf, sizeof(buf), "%d連続", j.score());
             constexpr int scale = 2;
             int w = font::textWidth(buf) * scale;
             _oled->drawText(buf, (SSD1306::W - w) / 2, 0, false, scale);
