@@ -21,6 +21,7 @@ void Display::draw(const Game& g) {
         case Game::Screen::MENU:   drawMenu(g);   break;
         case Game::Screen::GRAVE:  drawGrave(g);  break;
         case Game::Screen::NAMING: drawNaming(g); break;
+        case Game::Screen::MINIGAME: drawMinigame(g); break;
     }
 }
 
@@ -154,13 +155,13 @@ void Display::drawMenu(const Game& g) {
     _oled->drawText(status, 0, 0);
     _oled->drawKana(g.nameKana(), 96, 0);
 
-    // 中段：選択中の項目だけを 2 倍のひらがなで中央に出す（16x16、余白を確保）。
+    // 中段：選択中の項目だけを 2 倍（日本語 16x16）で中央に出す。余白を確保するため 1 項目のみ。
     // 左右の < > は「L/R で切り替えられる」合図、下のドットは 5 項目中の現在位置。
     int cursor = g.menuCursor();
-    const uint8_t* label = g.menuLabel(cursor);
+    const char* label = g.menuLabel(cursor);
     constexpr int scale = 2;
-    int width = kanaLen(label) * font::KANA_ADVANCE * scale;
-    _oled->drawKana(label, (SSD1306::W - width) / 2, 24, false, scale);
+    int width = font::textWidth(label) * scale;
+    _oled->drawText(label, (SSD1306::W - width) / 2, 24, false, scale);
     _oled->drawText("<", 12, 28);
     _oled->drawText(">", SSD1306::W - 12 - font::CHAR_W, 28);
 
@@ -173,6 +174,107 @@ void Display::drawMenu(const Game& g) {
         } else {
             _oled->fillRect(cx - 1, 53, 2, 2, true);
         }
+    }
+}
+
+// スプライトの非空白部分の最下行（rotCW のときは回転後の最下行）。スプライトは下に余白を
+// 持つので、これで地面に接地させる（余白のまま置くと羊が浮いて見える）。
+static int spriteBottom(const uint8_t (*sp)[3], bool rotCW) {
+    int bottom = 0;
+    for (int r = 0; r < 24; ++r) {
+        for (int c = 0; c < 24; ++c) {
+            if ((sp[r][c >> 3] >> (7 - (c & 7))) & 1) {
+                int y = rotCW ? c : r;   // 時計回り 90° では、元の col が回転後の row になる
+                if (y > bottom) bottom = y;
+            }
+        }
+    }
+    return bottom;
+}
+
+// ミニゲーム「柵を跳ぶ羊」。地面 y=52、羊は x=16 に 24x24 で立つ。
+void Display::drawMinigame(const Game& g) {
+    const JumpGame& j = g.jump();
+    constexpr int GROUND_Y = 52;
+    char buf[24];
+
+    _oled->fillRect(0, GROUND_Y, SSD1306::W, 1, true);
+
+    const bool over = (j.state() == JumpGame::State::OVER);
+    auto sprite = selectSprite(g, Game::Face::RIGHT);
+    if (over) {
+        // マリオ型のミス演出：ぶつかった羊が一度跳ね上がり、そのまま画面の下へ落ちていく。
+        // 動きはミスしてからの経過時間 t だけで決まる放物線（t = 0 と 2*RISE_MS で地面の高さ、
+        // t = RISE_MS で頂点 RISE_PX 上）。跳ね上がっている間は横向き（90° 回転）にする。
+        constexpr int RISE_MS = 250;
+        constexpr int RISE_PX = 18;   // 頂点でも「N連続」の文字（y=0〜15）に重ならない高さ
+        int t = int(j.nowMs() - j.overSinceMs());
+        if (t > 2000) t = 2000;                                 // 落ち切ったあとは、計算が大きくなりすぎないよう止める
+        int dt  = t - RISE_MS;
+        int off = RISE_PX * (dt * dt - RISE_MS * RISE_MS) / (RISE_MS * RISE_MS);   // 負が上
+        int top = GROUND_Y - 1 - spriteBottom(sprite, true);
+        if (top + off < SSD1306::H) {                           // 画面の下へ出たら描かない
+            _oled->drawSpriteRotCW(sprite, JumpGame::SHEEP_X, top + off);
+        }
+    } else {
+        // ジャンプ中は高さぶん持ち上げる
+        int top = GROUND_Y - 1 - spriteBottom(sprite, false);
+        _oled->drawSprite(sprite, JumpGame::SHEEP_X, top - j.sheepHeight());
+    }
+
+    // ぶつかった柵：終了時に当たり判定の範囲にある、羊に最も近い 1 本
+    int hit = -1;
+    if (over) {
+        int best = (JumpGame::FENCE_W + JumpGame::HITBOX_W) / 2;
+        for (int i = 0; i < JumpGame::MAX_FENCES; ++i) {
+            if (!j.fence(i).used) continue;
+            int dx = j.fenceCenterX(i) - JumpGame::HITBOX_CENTER_X;
+            if (dx < 0) dx = -dx;
+            if (dx < best) { best = dx; hit = i; }
+        }
+    }
+
+    // 柵：中心 x から幅 FENCE_W・高さ FENCE_H の長方形。画面外のものは描かない。
+    // ぶつかった柵は倒れた（横向きの）長方形にする。
+    for (int i = 0; i < JumpGame::MAX_FENCES; ++i) {
+        if (!j.fence(i).used) continue;
+        int cx = j.fenceCenterX(i);
+        if (cx < -JumpGame::FENCE_H || cx > SSD1306::W + JumpGame::FENCE_W) continue;
+        if (i == hit) {
+            _oled->fillRect(cx - JumpGame::FENCE_H / 2, GROUND_Y - JumpGame::FENCE_W,
+                            JumpGame::FENCE_H, JumpGame::FENCE_W, true);
+        } else {
+            _oled->fillRect(cx - JumpGame::FENCE_W / 2, GROUND_Y - JumpGame::FENCE_H,
+                            JumpGame::FENCE_W, JumpGame::FENCE_H, true);
+        }
+    }
+
+    switch (j.state()) {
+        case JumpGame::State::COUNTDOWN: {
+            std::snprintf(buf, sizeof(buf), "%d", j.countdownNumber());
+            constexpr int scale = 3;
+            int w = font::textWidth(buf) * scale;
+            _oled->drawText(buf, (SSD1306::W - w) / 2, 12, false, scale);
+            break;
+        }
+        case JumpGame::State::PLAYING: {
+            std::snprintf(buf, sizeof(buf), "%d連続", j.score());
+            _oled->drawText(buf, SSD1306::W - font::textWidth(buf), 0);
+            break;
+        }
+        case JumpGame::State::OVER: {
+            std::snprintf(buf, sizeof(buf), "%d連続", j.score());
+            constexpr int scale = 2;
+            int w = font::textWidth(buf) * scale;
+            _oled->drawText(buf, (SSD1306::W - w) / 2, 0, false, scale);
+            // 羊が跳ね上がっても重ならないよう、文字は上の 27px 以内に収める（頂点で羊の上端は約 y=17）
+            std::snprintf(buf, sizeof(buf), "しあわせ +%d", g.miniReward());
+            w = font::textWidth(buf);
+            _oled->drawText(buf, (SSD1306::W - w) / 2, 19);
+            break;
+        }
+        default:
+            break;
     }
 }
 
@@ -191,21 +293,20 @@ void Display::drawSleep(const Game& g) {
 }
 
 void Display::drawGrave(const Game& g) {
-    _oled->drawText("+ MEMORIES +", 0, 0);
+    _oled->drawText("おもいで", 0, 0);
     int n = g.graveCount();
     // 新しい順に最大 3 件を表示（i=0 が最新）
     int show = (n > 3) ? 3 : n;
     for (int i = 0; i < show; ++i) {
         const GraveRecord& gr = g.grave(n - 1 - i);
         char line[40];
-        // TODO Phase 2: ひらがなフォント実装後に「天寿をまっとう」「旅立ち」へ。
-        // 暫定 ASCII: '*' = 天寿（age）、'x' = 餓死/不幸死（status）
-        char tag = (gr.death_cause == uint8_t(Game::DeathCause::AGE)) ? '*' : 'x';
-        std::snprintf(line, sizeof(line), "%-4s %-4s %dd %c",
+        // 天寿 = 寿命でまっとう（age）、旅立ち = 餓死/不幸死（status）
+        const char* tag = (gr.death_cause == uint8_t(Game::DeathCause::AGE)) ? "天寿" : "旅立ち";
+        std::snprintf(line, sizeof(line), "%-4s %-4s %d日 %s",
                       gr.name, gr.breed, int(gr.age_days), tag);
         _oled->drawText(line, 0, 16 + i * 12);
     }
-    _oled->drawText("press btn", 0, 56);
+    _oled->drawText("ボタンをおす", 0, 56);
 }
 
 const uint8_t (*Display::selectSprite(const Game& g, Game::Face face))[3] {
@@ -308,27 +409,27 @@ void Display::drawNaming(const Game& g) {
     char buf[32];
     switch (g.namingMode()) {
         case Game::NamingMode::SELECT_MODE: {
-            _oled->drawText("name?", 0, 0);
+            _oled->drawText("なまえ", 0, 0);
             int cur = g.namingCursor();
             // 上：preset
             if (cur == 0) {
                 _oled->fillRect(0, 18, 80, 12, true);
-                _oled->drawText("preset", 4, 20, true);
+                _oled->drawText("おまかせ", 4, 20, true);
             } else {
-                _oled->drawText("preset", 4, 20, false);
+                _oled->drawText("おまかせ", 4, 20, false);
             }
             // 下：type
             if (cur == 1) {
                 _oled->fillRect(0, 36, 80, 12, true);
-                _oled->drawText("type", 4, 38, true);
+                _oled->drawText("じぶんで", 4, 38, true);
             } else {
-                _oled->drawText("type", 4, 38, false);
+                _oled->drawText("じぶんで", 4, 38, false);
             }
-            _oled->drawText("L/R / OK", 0, 56);
+            _oled->drawText("< > えらぶ  OK 決定", 0, 56);
             break;
         }
         case Game::NamingMode::PRESET_PICK: {
-            _oled->drawText("preset", 0, 0);
+            _oled->drawText("おまかせ", 0, 0);
             int idx = g.namingCursor();
             // 中央寄せで現在の preset 名を表示
             int width = kanaLen(kana::PRESETS[idx]) * font::KANA_ADVANCE;
@@ -337,7 +438,7 @@ void Display::drawNaming(const Game& g) {
             _oled->drawKana(kana::PRESETS[idx], x, 28);
             std::snprintf(buf, sizeof(buf), "%d/%d", idx + 1, kana::PRESET_COUNT);
             _oled->drawText(buf, 0, 16);
-            _oled->drawText("< L  R >  OK", 0, 56);
+            _oled->drawText("< > えらぶ  OK 決定", 0, 56);
             break;
         }
         case Game::NamingMode::INPUT_ROW: {
@@ -345,19 +446,19 @@ void Display::drawNaming(const Game& g) {
             drawNameInput(g.inputBuffer());
             // 中段：行を選ぶ
             int cur = g.namingCursor();
-            const int total = kana::ROW_COUNT + 2;   // + BS + OK
+            const int total = kana::ROW_COUNT + 2;   // + けす + 決定
             const char* label;
             if (cur < kana::ROW_COUNT)              label = kana::ROWS[cur].label;
-            else if (cur == kana::ROW_COUNT)        label = "BS";
-            else                                    label = "OK";
-            int width = std::strlen(label) * 6;
+            else if (cur == kana::ROW_COUNT)        label = "けす";
+            else                                    label = "決定";
+            int width = font::textWidth(label);
             int x = (128 - width) / 2;
             if (x < 0) x = 0;
             _oled->fillRect(x - 2, 26, width + 4, 12, true);
             _oled->drawText(label, x, 28, true);
             std::snprintf(buf, sizeof(buf), "%d/%d", cur + 1, total);
             _oled->drawText(buf, 0, 44);
-            _oled->drawText("< L  R >  OK", 0, 56);
+            _oled->drawText("< > えらぶ  OK 決定", 0, 56);
             break;
         }
         case Game::NamingMode::INPUT_CHAR: {
@@ -370,9 +471,9 @@ void Display::drawNaming(const Game& g) {
             int x = (128 - width) / 2;
             _oled->fillRect(x - 2, 26, width + 4, 12, true);
             _oled->drawKana(selected, x, 28, true);
-            std::snprintf(buf, sizeof(buf), "%s row %d/%d", row.label, cur + 1, row.length);
+            std::snprintf(buf, sizeof(buf), "%s %d/%d", row.label, cur + 1, row.length);
             _oled->drawText(buf, 0, 44);
-            _oled->drawText("< L  R >  OK", 0, 56);
+            _oled->drawText("< > えらぶ  OK 決定", 0, 56);
             break;
         }
     }

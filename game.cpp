@@ -13,6 +13,9 @@ constexpr int      WALK_LEFT      = 0;
 constexpr int      WALK_RIGHT     = 80;   // 128 - 48 = 80（右端余白ゼロ）
 constexpr int      DECAY_HOURS    = 3;                   // 空腹/幸福の減少間隔（game-hour）
 constexpr int      SLEEP_PET_HAPPY = 10;                  // 就寝中に撫でた時の幸福度増分（起床時 PET は +20）
+constexpr int      MINI_REWARD_MAX       = 30;   // ミニゲーム 1 回で上がる幸福度の上限
+constexpr int      MINI_REWARD_PER_SHEEP = 2;    // 柵を 1 つ越えるごとの幸福度
+constexpr int      MINI_HUNGER_COST      = 5;    // 運動でお腹が減る量
 constexpr int      START_HOUR     = 8;                   // 起動時のゲーム内時刻（朝 8 時）→ 即就寝を防ぐ
 constexpr int      LIFESPAN_MIN   = 10;                  // 自然死 寿命下限（リアル日）
 constexpr int      LIFESPAN_RANGE = 6;                   // [10, 15] のレンジ
@@ -20,17 +23,11 @@ constexpr int      LIFESPAN_RANGE = 6;                   // [10, 15] のレン�
 inline uint32_t rand7() { return get_rand_32() & 0x7Fu; }
 inline uint32_t rand8() { return get_rand_32() & 0xFFu; }
 
-// メニューラベルは 8x8 ひらがな（kana index 列、END 終端）。2 倍表示で左右の < > と重ならない 4 字まで。
-// index は kana.cpp の並び。打ち間違いは test_menu_labels_are_hiragana が romaji で検出する。
-constexpr uint8_t kLabelEat[]    = { 50, 25, 45, kana::END };   // ごはん
-constexpr uint8_t kLabelPet[]    = { 20, 59, 40, kana::END };   // なでる
-constexpr uint8_t kLabelCut[]    = {  5, 40, kana::END };       // かる
-constexpr uint8_t kLabelFun[]    = {  0, 14, 63, kana::END };   // あそぶ
-constexpr uint8_t kLabelBack[]   = { 34, 60, 40, kana::END };   // もどる
-constexpr uint8_t kLabelPolish[] = { 31, 46,  7, kana::END };   // みがく
-constexpr uint8_t kLabelNone[]   = { kana::END };
-const uint8_t* const kMenuLabelsDefault[Game::MENU_COUNT] = {
-    kLabelEat, kLabelPet, kLabelCut, kLabelFun, kLabelBack
+// メニューラベル（UTF-8）。選択中の 1 項目を 2 倍（16px/字）で中央に出すので、左右の < > と
+// 重ならない幅（5 字 = 80px）までに収める。全字が ja_font.h に収録されていることは
+// test_menu_labels_renderable_and_bounded が検証する。
+const char* const kMenuLabelsDefault[Game::MENU_COUNT] = {
+    "ごはん", "なでる", "毛刈り", "ゲーム", "もどる"
 };
 const Game::Action kMenuActionsDefault[Game::MENU_COUNT] = {
     Game::Action::FEED, Game::Action::PET, Game::Action::SHEAR, Game::Action::MINI,
@@ -38,9 +35,9 @@ const Game::Action kMenuActionsDefault[Game::MENU_COUNT] = {
 };
 }  // namespace
 
-const uint8_t* Game::menuLabel(int i) const {
-    if (i < 0 || i >= MENU_COUNT) return kLabelNone;
-    if (i == 2 && family() == Family::WILD) return kLabelPolish;
+const char* Game::menuLabel(int i) const {
+    if (i < 0 || i >= MENU_COUNT) return "";
+    if (i == 2 && family() == Family::WILD) return "角研ぎ";
     return kMenuLabelsDefault[i];
 }
 
@@ -209,6 +206,8 @@ void Game::tick() {
     }
 
     if (!_sleeping && _sleepy >= 80) _sleeping = true;
+    // 就寝中は操作できないので、遊んでいたミニゲームは中断する（結果は反映しない）
+    if (_sleeping && _screen == Screen::MINIGAME) _screen = Screen::MAIN;
     if (_sleeping  && _sleepy <= 10) _sleeping = false;
 
     // 自然死（寿命到達）と care-based 死亡（hunger/happy 限界）
@@ -325,8 +324,18 @@ void Game::onButton(Button btn) {
             } else if (btn == Button::RIGHT) {
                 _menu_cursor = (_menu_cursor + 1) % MENU_COUNT;
             } else if (btn == Button::CENTER) {
+                _screen = Screen::MAIN;              // doAction が画面を変える（ミニゲーム）ことがあるので先に戻す
                 doAction(menuAction(_menu_cursor));
-                _screen = Screen::MAIN;
+            }
+            break;
+        case Screen::MINIGAME:
+            if (_jump.state() == JumpGame::State::OVER) {
+                // 終了直後は連打で誤って閉じないよう、OVER_LOCK_MS はボタンを無視する
+                if (uint32_t(_now_ms - _jump.overSinceMs()) >= JumpGame::OVER_LOCK_MS) {
+                    _screen = Screen::MAIN;
+                }
+            } else {
+                _jump.onPress(_now_ms);
             }
             break;
         case Screen::GRAVE:
@@ -389,16 +398,49 @@ void Game::doAction(Action act) {
             }
             break;
         case Action::MINI:
-            // ミニゲーム未実装。仮で happy +5 とハッピー音
-            _happy = std::min(100, _happy + 5);
-            _action = Action::MINI;
-            _dirty = true;
-            if (_sound) _sound->happy();
+            // 柵を跳ぶミニゲーム。結果は MISS の時点で 1 回だけ反映する（applyMiniReward）。
+            _jump.start(_now_ms, get_rand_32());
+            _mini_reward   = 0;
+            _screen        = Screen::MINIGAME;
             break;
         default:
             break;
     }
     _walk_tick = 0;
+}
+
+void Game::updateMini() {
+    if (_screen != Screen::MINIGAME) return;
+    _jump.step(_now_ms);
+    uint8_t ev = _jump.consumeEvents();
+    if (ev) playMiniSounds(ev);
+    if (ev & JumpGame::EV_MISS) applyMiniReward();   // MISS は JumpGame が 1 回だけ出す
+}
+
+void Game::playMiniSounds(uint8_t ev) {
+    if (!_sound) return;
+    // 同じ tick に複数出たら、優先度の高い 1 つだけ鳴らす（ブザーは 1 音しか出せない）。
+    if (ev & JumpGame::EV_MISS) {
+        _sound->blip(196, 350, _now_ms);
+    } else if (ev & JumpGame::EV_CLEARED) {
+        // スコア 5 ごとに音程を上げる（最大 6 段）
+        _sound->blip(784 + 110 * std::min(_jump.score() / 5, 6), 70, _now_ms);
+    } else if (ev & JumpGame::EV_JUMP) {
+        _sound->blip(660, 40, _now_ms);
+    } else if (ev & JumpGame::EV_COUNT) {
+        _sound->blip(440, 80, _now_ms);
+    } else if (ev & JumpGame::EV_BEAT) {
+        _sound->blip(180, 15, _now_ms);          // 押しどきの合図（小さく低い「コッ」）
+    }
+}
+
+// スコアに応じて幸福度が上がり、運動でお腹が減る。ミニゲームだけで餓死しないよう空腹は 1 で止める。
+// 進化の傾向スコア（tend_*）には反映しない。
+void Game::applyMiniReward() {
+    _mini_reward   = std::min(MINI_REWARD_MAX, _jump.score() * MINI_REWARD_PER_SHEEP);
+    _happy         = std::min(100, _happy + _mini_reward);
+    if (_hunger > 1) _hunger = std::max(1, _hunger - MINI_HUNGER_COST);
+    _dirty = true;
 }
 
 void Game::evolveYoung() {

@@ -17,7 +17,9 @@ constexpr uint PIN_BTN_CENTER = 20;  // 行 15 右側 (H15)
 constexpr uint PIN_BTN_RIGHT  = 19;  // 行 16 右側 (H16)
 constexpr uint PIN_BUZZER     = 18;  // 行 17 右側 (H17)
 
-constexpr uint32_t TICK_MS                = 50;            // 約 20 fps
+constexpr uint32_t TICK_MS                = 50;            // ゲーム全体の tick 周期（通常時のループ周期でもある）
+constexpr uint32_t MINI_LOOP_MS           = 5;             // ミニゲーム中のボタン読み取り・更新の周期
+constexpr uint32_t MINI_DRAW_MS           = 33;            // ミニゲーム中の描画周期（約 30fps。I2C 転送に約 25ms かかる）
 // 状態が変わった時の最短セーブ間隔（連打などで頻繁に書かないようにする rate limit）
 constexpr uint32_t MIN_SAVE_INTERVAL_MS   = 30 * 1000;     // 30 秒
 // 状態が変わってなくても age_ticks 進行を捕まえるための強制セーブ間隔。
@@ -96,10 +98,15 @@ int main() {
         }
     };
 
-    while (true) {
-        game.tick();
+    uint32_t last_tick_ms = to_ms_since_boot(get_absolute_time());
+    uint32_t last_draw_ms = 0;
 
-        // ボタン処理（active LOW、エッジ検出。50ms tick で簡易デバウンス）
+    while (true) {
+        const uint32_t now_ms = to_ms_since_boot(get_absolute_time());
+        game.setNowMs(now_ms);
+        sound.update(now_ms);        // blip の終了時刻を過ぎていたら止める
+
+        // ボタン処理（active LOW、エッジ検出）。ミニゲーム中は約 5ms ごとに読む。
         poll_button(PIN_BTN_LEFT,   bL, Game::Button::LEFT,   true,  Game::Button::LEFT_LONG);
         poll_button(PIN_BTN_CENTER, bC, Game::Button::CENTER, false, Game::Button::CENTER);
         poll_button(PIN_BTN_RIGHT,  bR, Game::Button::RIGHT,  false, Game::Button::RIGHT);
@@ -107,19 +114,32 @@ int main() {
         // メイン画面のステータス overlay 用に、LEFT 押下中フラグを毎フレーム反映
         game.setLeftHeld(bL.pressed);
 
-        disp.draw(game);
-        oled.show();
+        // ゲーム全体の tick（年齢・空腹など）は、ループの速さに関係なく経過時間で TICK_MS ごと。
+        while (now_ms - last_tick_ms >= TICK_MS) {
+            game.tick();
+            last_tick_ms += TICK_MS;
+        }
+        game.updateMini();
 
-        // dirty なら最短間隔以上経過していれば保存、dirty でなくても force 間隔で保存
+        // 描画。通常は毎ループ、ミニゲーム中は約 33ms ごと。
+        const bool mini = game.inMiniGame();
+        if (!mini || now_ms - last_draw_ms >= MINI_DRAW_MS) {
+            disp.draw(game);
+            oled.show();
+            last_draw_ms = now_ms;
+        }
+
+        // dirty なら最短間隔以上経過していれば保存、dirty でなくても force 間隔で保存。
+        // フラッシュの書き込み中は数十 ms 入力が止まるので、ミニゲーム中は後回しにする。
         int64_t since_save_us = absolute_time_diff_us(last_save, get_absolute_time());
         bool min_elapsed   = since_save_us > int64_t(MIN_SAVE_INTERVAL_MS)   * 1000;
         bool force_elapsed = since_save_us > int64_t(FORCE_SAVE_INTERVAL_MS) * 1000;
-        if ((game.isDirty() && min_elapsed) || force_elapsed) {
+        if (!mini && ((game.isDirty() && min_elapsed) || force_elapsed)) {
             save.write(game.saveData());
             game.clearDirty();
             last_save = get_absolute_time();
         }
 
-        sleep_ms(TICK_MS);
+        sleep_ms(mini ? MINI_LOOP_MS : TICK_MS);
     }
 }

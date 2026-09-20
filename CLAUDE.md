@@ -40,6 +40,7 @@ cd test && make test
 ```
 main.cpp          ハードウェア初期化・ゲームループ・ボタンポーリング・セーブ制御
   ├── Game        ゲームロジック（進化・ステータス・命名・墓）── Pico SDK 非依存
+  ├── JumpGame    ミニゲーム「柵を跳ぶ羊」のロジック（時刻から進む純粋なロジック）── Pico SDK 非依存
   ├── Display     Game の状態を読み取って SSD1306 に描画
   ├── SSD1306     I2C OLED ドライバ最小実装（フレームバッファ → show() で転送）
   ├── Sound       パッシブブザーの PWM 効果音
@@ -47,6 +48,8 @@ main.cpp          ハードウェア初期化・ゲームループ・ボタン�
 ```
 
 Game クラスはハードウェアに一切依存しない。Sound はコンストラクタで注入し、nullptr 許容（テスト時）。
+ミニゲームは `Screen::MINIGAME` で `JumpGame` を進め、結果（幸福度・空腹）だけ Game が反映する。ゲーム中の効果音は
+待たない `Sound::blip` / `update` を使い（`mee()` などは `sleep_ms` で待つので使わない）、`main.cpp` はゲーム中だけループを速くする。
 Display は Game の const 参照だけ受け取る read-only 設計。
 
 ### 進化システム（3 系統 × 7 品種）
@@ -82,3 +85,9 @@ Flash 寿命保護: dirty フラグ + 30 秒 rate limit + 30 分 force-save。
 
 `sprites.h` は `sprites_gen.py` で自動生成。手編集しない。
 元素材は `素材/` ディレクトリ（gitignore 済み、dot-illust.net 由来・非商用 OK）。
+
+## 日本語フォント
+
+`kana_font.h`（ひらがな 75 字、名前入力用）と `ja_font.h`（かな・カタカナ・記号・JIS 第一水準漢字、UTF-8 表示用）は
+`kana_font_gen.py` で美咲ゴシック（8x8、商用可・再配布自由）の BDF から自動生成。手編集しない。
+ライセンス文は `third_party/misaki/misaki.txt`。`SSD1306::drawText` は UTF-8 対応で、ASCII は 5x7、それ以外は 8x8 で描く。

@@ -1,6 +1,7 @@
 #include "font.h"
 #include "kana.h"
 #include "kana_font.h"
+#include "ja_font.h"
 
 namespace {
 
@@ -120,4 +121,49 @@ const uint8_t* font::glyph(char c) {
 const uint8_t* font::kanaGlyph(uint8_t index) {
     if (index >= kana::COUNT) return kKanaBlank;
     return kKanaFont[index];
+}
+
+uint32_t font::decodeUtf8(const char*& s) {
+    const uint8_t b0 = uint8_t(*s);
+    if (b0 == 0) return 0;
+    if (b0 < 0x80) { ++s; return b0; }
+
+    // 先頭バイトから、続く継続バイト数と先頭ビットを決める
+    int extra;
+    uint32_t cp;
+    if      (b0 >= 0xC2 && b0 <= 0xDF) { extra = 1; cp = b0 & 0x1F; }
+    else if (b0 >= 0xE0 && b0 <= 0xEF) { extra = 2; cp = b0 & 0x0F; }
+    else if (b0 >= 0xF0 && b0 <= 0xF4) { extra = 3; cp = b0 & 0x07; }
+    else { ++s; return REPLACEMENT; }   // 継続バイト単独・0xC0/0xC1・0xF5 以降
+
+    ++s;
+    for (int i = 0; i < extra; ++i) {
+        const uint8_t b = uint8_t(*s);
+        if ((b & 0xC0) != 0x80) return REPLACEMENT;   // NUL もここで弾かれ、終端を越えない
+        cp = (cp << 6) | (b & 0x3F);
+        ++s;
+    }
+    return cp;
+}
+
+const uint8_t* font::jaGlyph(uint32_t cp) {
+    if (cp < 0x80 || cp > 0xFFFF) return nullptr;
+    // kJaCodepoints は昇順なので二分探索
+    int lo = 0, hi = JA_FONT_COUNT - 1;
+    while (lo <= hi) {
+        const int mid = (lo + hi) / 2;
+        const uint32_t v = kJaCodepoints[mid];
+        if (v == cp) return kJaFont[mid];
+        if (v < cp) lo = mid + 1; else hi = mid - 1;
+    }
+    return nullptr;
+}
+
+int font::textWidth(const char* utf8) {
+    int w = 0;
+    const char* p = utf8;
+    while (*p) {
+        w += (decodeUtf8(p) < 0x80) ? ADVANCE : KANA_ADVANCE;
+    }
+    return w;
 }

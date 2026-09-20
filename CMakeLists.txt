@@ -12,6 +12,7 @@ pico_sdk_init()
 add_executable(mokoji
     main.cpp
     game.cpp
+    jump_game.cpp
     display.cpp
     sound.cpp
     save.cpp
