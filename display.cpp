@@ -203,9 +203,19 @@ void Display::drawMinigame(const Game& g) {
     const bool over = (j.state() == JumpGame::State::OVER);
     auto sprite = selectSprite(g, Game::Face::RIGHT);
     if (over) {
-        // 転んだ羊：スプライトを時計回りに 90° 回して地面に横たえる
+        // マリオ型のミス演出：ぶつかった羊が一度跳ね上がり、そのまま画面の下へ落ちていく。
+        // 動きはミスしてからの経過時間 t だけで決まる放物線（t = 0 と 2*RISE_MS で地面の高さ、
+        // t = RISE_MS で頂点 RISE_PX 上）。跳ね上がっている間は横向き（90° 回転）にする。
+        constexpr int RISE_MS = 250;
+        constexpr int RISE_PX = 18;   // 頂点でも「N連続」の文字（y=0〜15）に重ならない高さ
+        int t = int(j.nowMs() - j.overSinceMs());
+        if (t > 2000) t = 2000;                                 // 落ち切ったあとは、計算が大きくなりすぎないよう止める
+        int dt  = t - RISE_MS;
+        int off = RISE_PX * (dt * dt - RISE_MS * RISE_MS) / (RISE_MS * RISE_MS);   // 負が上
         int top = GROUND_Y - 1 - spriteBottom(sprite, true);
-        _oled->drawSpriteRotCW(sprite, JumpGame::SHEEP_X, top);
+        if (top + off < SSD1306::H) {                           // 画面の下へ出たら描かない
+            _oled->drawSpriteRotCW(sprite, JumpGame::SHEEP_X, top + off);
+        }
     } else {
         // ジャンプ中は高さぶん持ち上げる
         int top = GROUND_Y - 1 - spriteBottom(sprite, false);
@@ -257,14 +267,10 @@ void Display::drawMinigame(const Game& g) {
             constexpr int scale = 2;
             int w = font::textWidth(buf) * scale;
             _oled->drawText(buf, (SSD1306::W - w) / 2, 0, false, scale);
-            // 羊（地面に立つと y=28〜）と重ならないよう、上の 27px 以内に収める
+            // 羊が跳ね上がっても重ならないよう、文字は上の 27px 以内に収める（頂点で羊の上端は約 y=17）
             std::snprintf(buf, sizeof(buf), "しあわせ +%d", g.miniReward());
             w = font::textWidth(buf);
             _oled->drawText(buf, (SSD1306::W - w) / 2, 19);
-            // ふらふらの星：約 0.2 秒ごとに 2 コマで入れ替わる（羊の右側）
-            const int phase = int((j.nowMs() / 200) & 1u);
-            _oled->drawText("*", phase ? 46 : 42, 32);
-            _oled->drawText("*", phase ? 42 : 46, 42);
             break;
         }
         default:
