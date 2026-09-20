@@ -276,6 +276,103 @@
             color: var(--text);
             letter-spacing: .06em;
         }
+
+        /* ── 進化ツリー（ゲーム本体のスプライト） ── */
+        /* 列: 系統名 / ベビー / 若羊 / 成体 / 特殊成長。行: 見出し + 3 系統 */
+        #evo-tree {
+            display: grid;
+            grid-template-columns: auto auto auto auto auto;
+            gap: 10px 14px;
+            align-items: center;
+            justify-content: start;
+        }
+
+        .evo-head {
+            font-size: 10px;
+            color: var(--text);
+            letter-spacing: .1em;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 4px;
+        }
+
+        .evo-head.arrow::before {
+            content: "→ ";
+            color: #345;
+        }
+
+        .evo-family {
+            font-size: 10px;
+            color: var(--text-hi);
+            letter-spacing: .06em;
+            white-space: nowrap;
+        }
+
+        .evo-cell {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .evo-node {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 3px;
+            padding: 6px 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            align-items: center;
+            cursor: pointer;
+            transition: border-color .15s;
+        }
+
+        .evo-node:hover {
+            border-color: var(--accent);
+        }
+
+        /* 選択中のフォームの親（進化元）と子（進化先）を薄く示す */
+        .evo-node.ancestor {
+            border-color: #2a6a9a;
+        }
+
+        .evo-node.child {
+            border-color: #2a6a9a;
+            border-style: dashed;
+        }
+
+        .evo-node.active {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 1px var(--accent);
+        }
+
+        .evo-node .label {
+            font-size: 10px;
+            color: var(--text-hi);
+            text-align: center;
+            max-width: 92px;
+        }
+
+        .evo-node .id {
+            font-size: 8px;
+            color: #556;
+            letter-spacing: .02em;
+            max-width: 92px;
+            text-align: center;
+            word-break: break-all;
+        }
+
+        #lineage {
+            font-size: 11px;
+            color: var(--text-hi);
+            margin-top: 8px;
+            min-height: 16px;
+        }
+
+        #evo-note {
+            font-size: 10px;
+            color: #a44;
+        }
     </style>
 </head>
 
@@ -290,7 +387,7 @@
 
         <!-- 左: 入力 -->
         <div id="input-col">
-            <label>sprites.py の中身をここにペースト（HITSUJI など tuple / _img() 両対応）</label>
+            <label>候補スプライトをここにペースト（tuple / _img() 両対応）。ゲーム本体の分は右のツリーに自動で出る</label>
             <textarea id="src" spellcheck="false" placeholder='HITSUJI = (
     "........................",
     "......###########.......",
@@ -335,7 +432,7 @@ LAMB_F = _img(
                 <div class="section-label">animation</div>
                 <div class="anim-ctrl">
                     <span>sprite</span>
-                    <select id="anim-sel"></select>
+                    <select id="anim-sel" onchange="onAnimSelChange()"></select>
                     <button id="btn-play" onclick="togglePlay()">▶ play</button>
                     <span>fps</span>
                     <input type="range" id="fps" min="1" max="16" value="4"
@@ -343,6 +440,14 @@ LAMB_F = _img(
                     <span id="fps-val">4</span>
                     <span id="frame-counter" style="color:#555">f0</span>
                 </div>
+                <div id="lineage"></div>
+            </div>
+
+            <!-- 進化ツリー（oled_preview_data.js から自動表示） -->
+            <div>
+                <div class="section-label">evolution tree — game sprites</div>
+                <div id="evo-tree"></div>
+                <div id="evo-note"></div>
             </div>
 
             <!-- ズーム比較 -->
@@ -353,22 +458,42 @@ LAMB_F = _img(
 
             <!-- スプライト一覧 -->
             <div>
-                <div class="section-label">all sprites</div>
+                <div class="section-label">pasted sprites — 貼り付けた候補</div>
                 <div id="sprite-list"></div>
             </div>
 
         </div>
     </div>
 
+    <!-- python3 sprites_gen.py が生成。無くてもペースト機能は使える（file:// でも読める） -->
+    <script src="oled_preview_data.js"></script>
     <script>
         const LS_SRC = 'mokomoko_src';
         const LS_SEL = 'mokomoko_selected';
 
+        // 貼り付けた候補スプライト（名前 → 0/1 の 24x24）
         let sprites = {};
+        // ゲーム本体のスプライト（oled_preview_data.js）
+        const DATA = window.MOKOJI_DATA || null;
+        const forms = DATA ? DATA.forms : [];
+        const formById = {};       // id → form
+        const formBits = {};       // id → { F, L, R }（0/1 の 24x24）
+        // 現在の選択。{ kind: 'form', id } か { kind: 'sprite', name }
+        let current = null;
         let animTimer = null;
         let animFrame = 0;
         let playing = false;
-        let selectedName = null;
+
+        // ゲーム内の向き。歩行アニメは 正面 → 左 → 正面 → 右 の順に回す
+        const WALK_FRAMES = ['F', 'L', 'F', 'R'];
+
+        function toBits(rows) {
+            return rows.map(r => [...r].map(c => c === '#' ? 1 : 0));
+        }
+        forms.forEach(f => {
+            formById[f.id] = f;
+            formBits[f.id] = { F: toBits(f.frames.F), L: toBits(f.frames.L), R: toBits(f.frames.R) };
+        });
 
         // ── localStorage ──────────────────────────────
         function saveSrc() {
@@ -446,17 +571,15 @@ LAMB_F = _img(
             document.getElementById('power-dot').style.background = '#2a6a2a';
         }
 
-        // ── スプライトカード ──────────────────────────────
+        // ── スプライトカード（貼り付けた候補） ──────────────────
         function buildSpriteList() {
             const list = document.getElementById('sprite-list');
             list.innerHTML = '';
-            const animSel = document.getElementById('anim-sel');
-            const prevAnimVal = animSel.value;
-            animSel.innerHTML = '';
 
             Object.entries(sprites).forEach(([name, sp]) => {
                 const card = document.createElement('div');
-                card.className = 'sprite-card' + (name === selectedName ? ' active' : '');
+                const isCurrent = current && current.kind === 'sprite' && current.name === name;
+                card.className = 'sprite-card' + (isCurrent ? ' active' : '');
                 const c = document.createElement('canvas');
                 c.width = 48; c.height = 48;
                 c.style.cssText = 'width:48px;height:48px;background:#050d14';
@@ -468,14 +591,148 @@ LAMB_F = _img(
                 card.appendChild(label);
                 card.addEventListener('click', () => selectSprite(name));
                 list.appendChild(card);
-
-                const opt = document.createElement('option');
-                opt.value = name; opt.textContent = name;
-                animSel.appendChild(opt);
             });
 
-            // animation セレクトの選択を復元
-            if (prevAnimVal && sprites[prevAnimVal]) animSel.value = prevAnimVal;
+            rebuildAnimSelect();
+        }
+
+        // ── 進化ツリー（ゲーム本体のスプライト） ──────────────────
+        // 進化元（親）: ベビー → 若羊（系統） → 成体（品種） → 特殊成長（増毛・角長）
+        function parentOf(f) {
+            switch (f.stage) {
+                case 'YOUNG': return forms.find(x => x.stage === 'BABY') || null;
+                case 'ADULT': return forms.find(x => x.stage === 'YOUNG' && x.family === f.family) || null;
+                case 'SPECIAL': return forms.find(x => x.stage === 'ADULT' && x.breed === f.breed) || null;
+                default: return null;
+            }
+        }
+        function ancestorsOf(f) {
+            const out = [];
+            for (let p = parentOf(f); p; p = parentOf(p)) out.unshift(p);
+            return out;
+        }
+        function childrenOf(f) {
+            return forms.filter(x => { const p = parentOf(x); return p && p.id === f.id; });
+        }
+        function lineageText(f) {
+            return [...ancestorsOf(f), f].map(x => x.label).join(' → ');
+        }
+
+        function makeNode(f) {
+            const node = document.createElement('div');
+            node.className = 'evo-node';
+            node.dataset.id = f.id;
+            node.title = f.id;
+            const c = document.createElement('canvas');
+            c.width = 48; c.height = 48;
+            c.style.cssText = 'width:48px;height:48px;background:#050d14';
+            drawSprite(c.getContext('2d'), formBits[f.id].F, 2, 0, 0);
+            const label = document.createElement('div');
+            label.className = 'label';
+            label.textContent = f.label;
+            const id = document.createElement('div');
+            id.className = 'id';
+            id.textContent = f.id;
+            node.appendChild(c); node.appendChild(label); node.appendChild(id);
+            node.addEventListener('click', () => selectForm(f.id));
+            return node;
+        }
+
+        function buildTree() {
+            const tree = document.getElementById('evo-tree');
+            const note = document.getElementById('evo-note');
+            tree.innerHTML = '';
+            if (!DATA) {
+                note.textContent = 'oled_preview_data.js が見つかりません。python3 sprites_gen.py で生成してください（貼り付けは今までどおり使えます）';
+                return;
+            }
+            note.textContent = '';
+
+            // 列: 1 = 系統名 / 2.. = 成長段階。行: 1 = 見出し / 2.. = 系統
+            const stageCol = {};
+            DATA.stages.forEach((s, i) => {
+                stageCol[s.id] = i + 2;
+                const h = document.createElement('div');
+                h.className = 'evo-head' + (i > 0 ? ' arrow' : '');
+                h.textContent = s.label;
+                h.style.gridColumn = i + 2;
+                h.style.gridRow = 1;
+                tree.appendChild(h);
+            });
+            const familyRow = {};
+            DATA.families.forEach((fam, i) => {
+                familyRow[fam.id] = i + 2;
+                const l = document.createElement('div');
+                l.className = 'evo-family';
+                l.textContent = fam.label;
+                l.style.gridColumn = 1;
+                l.style.gridRow = i + 2;
+                tree.appendChild(l);
+            });
+
+            // 段階 × 系統 のセルにノードを並べる。ベビーは全系統共通なので縦に結合する
+            const cells = {};
+            const cellFor = (stage, family) => {
+                const key = stage + '/' + family;
+                if (!cells[key]) {
+                    const c = document.createElement('div');
+                    c.className = 'evo-cell';
+                    c.style.gridColumn = stageCol[stage];
+                    c.style.gridRow = family ? familyRow[family] : `2 / span ${DATA.families.length}`;
+                    tree.appendChild(c);
+                    cells[key] = c;
+                }
+                return cells[key];
+            };
+            forms.forEach(f => cellFor(f.stage, f.family).appendChild(makeNode(f)));
+        }
+
+        // 選択中のフォームと、その進化元（ancestor）・進化先（child）をツリー上で示す
+        function markTree() {
+            const f = current && current.kind === 'form' ? formById[current.id] : null;
+            const anc = new Set(f ? ancestorsOf(f).map(x => x.id) : []);
+            const kids = new Set(f ? childrenOf(f).map(x => x.id) : []);
+            document.querySelectorAll('.evo-node').forEach(el => {
+                const id = el.dataset.id;
+                el.classList.toggle('active', !!f && id === f.id);
+                el.classList.toggle('ancestor', anc.has(id));
+                el.classList.toggle('child', kids.has(id));
+            });
+        }
+
+        // ── アニメ セレクト（ゲーム本体 form:ID / 貼り付け sprite:NAME） ──
+        function currentKey() {
+            if (!current) return '';
+            return current.kind === 'form' ? 'form:' + current.id : 'sprite:' + current.name;
+        }
+        function syncAnimSelect() {
+            document.getElementById('anim-sel').value = currentKey();
+        }
+        function rebuildAnimSelect() {
+            const sel = document.getElementById('anim-sel');
+            sel.innerHTML = '';
+            const addGroup = (label, items) => {
+                if (!items.length) return;
+                const g = document.createElement('optgroup');
+                g.label = label;
+                items.forEach(([value, text]) => {
+                    const o = document.createElement('option');
+                    o.value = value;
+                    o.textContent = text;
+                    g.appendChild(o);
+                });
+                sel.appendChild(g);
+            };
+            addGroup('game', forms.map(f => ['form:' + f.id, `${f.id} — ${f.label}`]));
+            addGroup('pasted', Object.keys(sprites).map(n => ['sprite:' + n, n]));
+            syncAnimSelect();
+        }
+        function selectByKey(key) {
+            if (key.startsWith('form:') && formById[key.slice(5)]) selectForm(key.slice(5));
+            else if (key.startsWith('sprite:') && sprites[key.slice(7)]) selectSprite(key.slice(7));
+        }
+        function onAnimSelChange() {
+            selectByKey(document.getElementById('anim-sel').value);
         }
 
         function buildZoom(sp) {
@@ -497,25 +754,52 @@ LAMB_F = _img(
         }
 
         function selectSprite(name) {
-            selectedName = name;
+            current = { kind: 'sprite', name };
             document.querySelectorAll('.sprite-card').forEach(el => {
                 el.classList.toggle('active', el.querySelector('.name').textContent === name);
             });
+            markTree();
+            document.getElementById('lineage').textContent = '';
             drawOLED(sprites[name]);
             buildZoom(sprites[name]);
-            document.getElementById('anim-sel').value = name;
-            saveSel(name); // 選択をlocalStorageに保存
+            animFrame = 0;
+            document.getElementById('frame-counter').textContent = 'f0';
+            syncAnimSelect();
+            saveSel(currentKey()); // 選択をlocalStorageに保存
+        }
+
+        function selectForm(id) {
+            current = { kind: 'form', id };
+            document.querySelectorAll('.sprite-card').forEach(el => el.classList.remove('active'));
+            markTree();
+            document.getElementById('lineage').textContent = lineageText(formById[id]);
+            const sp = formBits[id].F;
+            drawOLED(sp);
+            buildZoom(sp);
+            animFrame = 0;
+            document.getElementById('frame-counter').textContent = 'F';
+            syncAnimSelect();
+            saveSel(currentKey());
         }
 
         // ── アニメ ──────────────────────────────────────
+        // 貼り付け候補用: 名前の前方一致で似たスプライトを集める
         function getAnimNames() {
-            const sel = document.getElementById('anim-sel').value;
+            const sel = current && current.kind === 'sprite' ? current.name : '';
             const base = sel.replace(/[_]?[FLR\d]+$/, '');
             const group = Object.keys(sprites).filter(n => n.startsWith(base) || n === sel);
             return group.length >= 2 ? group : Object.keys(sprites).slice(0, Math.min(4, Object.keys(sprites).length));
         }
 
         function tickAnim() {
+            if (current && current.kind === 'form') {
+                // ゲーム本体: フォームの 正面 → 左 → 正面 → 右 を回す
+                animFrame = (animFrame + 1) % WALK_FRAMES.length;
+                const k = WALK_FRAMES[animFrame];
+                document.getElementById('frame-counter').textContent = k;
+                drawOLED(formBits[current.id][k]);
+                return;
+            }
             const names = getAnimNames();
             if (!names.length) return;
             animFrame = (animFrame + 1) % names.length;
@@ -548,7 +832,8 @@ LAMB_F = _img(
                 return;
             }
 
-            const prevSelected = selectedName; // parse前の選択を記憶
+            // parse前の選択（貼り付け候補）を記憶
+            const prevSelected = current && current.kind === 'sprite' ? current.name : null;
 
             sprites = parseSrc(src);
             const names = Object.keys(sprites);
@@ -574,17 +859,23 @@ LAMB_F = _img(
         }
 
         function clearAll() {
+            // 消すのは貼り付けた候補だけ。ゲーム本体のツリーは残す
+            const keepForm = current && current.kind === 'form' ? current.id : null;
             document.getElementById('src').value = '';
             sprites = {};
-            selectedName = null;
+            current = null;
             document.getElementById('sprite-list').innerHTML = '';
             document.getElementById('zoom-wrap').innerHTML = '';
-            document.getElementById('anim-sel').innerHTML = '';
+            document.getElementById('lineage').textContent = '';
             document.getElementById('parse-log').textContent = '';
-            document.getElementById('status').textContent = '待機中';
-            document.getElementById('status').className = '';
-            drawOLED(null);
+            document.getElementById('status').textContent = forms.length ? `✓ ${forms.length} forms（ゲーム本体）` : '待機中';
+            document.getElementById('status').className = forms.length ? 'ok' : '';
+            rebuildAnimSelect();
+            markTree();
             clearStorage();
+            if (keepForm) selectForm(keepForm);
+            else if (forms.length) selectForm(forms[0].id);
+            else drawOLED(null);
         }
 
         function loadSample() {
@@ -617,7 +908,7 @@ LAMB_F = _img(
             parse();
         }
 
-        // ── 起動: localStorageから復元 ──────────────────
+        // ── 起動: ツリーを作り、localStorageから復元 ──────────────────
         drawOLED(null);
 
         document.getElementById('src').addEventListener('keydown', e => {
@@ -627,24 +918,37 @@ LAMB_F = _img(
         // 入力のたびに随時保存
         document.getElementById('src').addEventListener('input', saveSrc);
 
-        // 起動時に保存済みデータを復元
+        buildTree();
+
+        // 起動時に保存済みの貼り付けと選択を復元（ゲーム本体のスプライトは data.js から常に読む）
+        let savedSel = null;
         try {
             const savedSrc = localStorage.getItem(LS_SRC);
-            const savedSel = localStorage.getItem(LS_SEL);
+            savedSel = localStorage.getItem(LS_SEL);
             if (savedSrc) {
                 document.getElementById('src').value = savedSrc;
                 sprites = parseSrc(savedSrc);
-                const names = Object.keys(sprites);
-                if (names.length) {
-                    document.getElementById('status').textContent = `✓ ${names.length} sprites restored`;
-                    document.getElementById('status').className = 'ok';
-                    document.getElementById('parse-log').textContent = names.join('  ');
-                    selectedName = (savedSel && sprites[savedSel]) ? savedSel : names[0];
-                    buildSpriteList();
-                    selectSprite(selectedName);
-                }
             }
         } catch (e) { }
+
+        const pastedNames = Object.keys(sprites);
+        const statusParts = [];
+        if (forms.length) statusParts.push(`${forms.length} forms（ゲーム本体）`);
+        if (pastedNames.length) statusParts.push(`${pastedNames.length} sprites restored（貼り付け）`);
+        if (statusParts.length) {
+            document.getElementById('status').textContent = '✓ ' + statusParts.join(' + ');
+            document.getElementById('status').className = 'ok';
+        }
+        if (pastedNames.length) document.getElementById('parse-log').textContent = pastedNames.join('  ');
+
+        buildSpriteList();
+
+        // 選択の復元。旧版は名前だけを保存していたので、接頭辞が無ければ貼り付け候補の名前として扱う
+        if (savedSel) selectByKey(/^(form|sprite):/.test(savedSel) ? savedSel : 'sprite:' + savedSel);
+        if (!current) {
+            if (forms.length) selectForm(forms[0].id);
+            else if (pastedNames.length) selectSprite(pastedNames[0]);
+        }
     </script>
 </body>
 
