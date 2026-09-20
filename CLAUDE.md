@@ -82,3 +82,9 @@ Flash 寿命保護: dirty フラグ + 30 秒 rate limit + 30 分 force-save。
 
 `sprites.h` は `sprites_gen.py` で自動生成。手編集しない。
 元素材は `素材/` ディレクトリ（gitignore 済み、dot-illust.net 由来・非商用 OK）。
+
+## 日本語フォント
+
+`kana_font.h`（ひらがな 75 字、名前入力用）と `ja_font.h`（かな・カタカナ・記号・JIS 第一水準漢字、UTF-8 表示用）は
+`kana_font_gen.py` で美咲ゴシック（8x8、商用可・再配布自由）の BDF から自動生成。手編集しない。
+ライセンス文は `third_party/misaki/misaki.txt`。`SSD1306::drawText` は UTF-8 対応で、ASCII は 5x7、それ以外は 8x8 で描く。

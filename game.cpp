@@ -20,17 +20,11 @@ constexpr int      LIFESPAN_RANGE = 6;                   // [10, 15] のレン�
 inline uint32_t rand7() { return get_rand_32() & 0x7Fu; }
 inline uint32_t rand8() { return get_rand_32() & 0xFFu; }
 
-// メニューラベルは 8x8 ひらがな（kana index 列、END 終端）。2 倍表示で左右の < > と重ならない 4 字まで。
-// index は kana.cpp の並び。打ち間違いは test_menu_labels_are_hiragana が romaji で検出する。
-constexpr uint8_t kLabelEat[]    = { 50, 25, 45, kana::END };   // ごはん
-constexpr uint8_t kLabelPet[]    = { 20, 59, 40, kana::END };   // なでる
-constexpr uint8_t kLabelCut[]    = {  5, 40, kana::END };       // かる
-constexpr uint8_t kLabelFun[]    = {  0, 14, 63, kana::END };   // あそぶ
-constexpr uint8_t kLabelBack[]   = { 34, 60, 40, kana::END };   // もどる
-constexpr uint8_t kLabelPolish[] = { 31, 46,  7, kana::END };   // みがく
-constexpr uint8_t kLabelNone[]   = { kana::END };
-const uint8_t* const kMenuLabelsDefault[Game::MENU_COUNT] = {
-    kLabelEat, kLabelPet, kLabelCut, kLabelFun, kLabelBack
+// メニューラベル（UTF-8）。選択中の 1 項目を 2 倍（16px/字）で中央に出すので、左右の < > と
+// 重ならない幅（5 字 = 80px）までに収める。全字が ja_font.h に収録されていることは
+// test_menu_labels_renderable_and_bounded が検証する。
+const char* const kMenuLabelsDefault[Game::MENU_COUNT] = {
+    "ごはん", "なでる", "毛刈り", "ゲーム", "もどる"
 };
 const Game::Action kMenuActionsDefault[Game::MENU_COUNT] = {
     Game::Action::FEED, Game::Action::PET, Game::Action::SHEAR, Game::Action::MINI,
@@ -38,9 +32,9 @@ const Game::Action kMenuActionsDefault[Game::MENU_COUNT] = {
 };
 }  // namespace
 
-const uint8_t* Game::menuLabel(int i) const {
-    if (i < 0 || i >= MENU_COUNT) return kLabelNone;
-    if (i == 2 && family() == Family::WILD) return kLabelPolish;
+const char* Game::menuLabel(int i) const {
+    if (i < 0 || i >= MENU_COUNT) return "";
+    if (i == 2 && family() == Family::WILD) return "角研ぎ";
     return kMenuLabelsDefault[i];
 }
 

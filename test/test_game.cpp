@@ -364,21 +364,15 @@ static void test_kana_glyph_out_of_range_is_blank() {
     assert(!glyph_has_pixel(font::kanaGlyph(kana::COUNT)));
 }
 
-// メニューラベル（ひらがな）。index の打ち間違いは romaji 変換で検出する。
-static std::string label_romaji(const Game& g, int i) {
-    char buf[16];
-    kana::toRomaji(g.menuLabel(i), buf, sizeof(buf));
-    return buf;
-}
-
-static void test_menu_labels_are_hiragana() {
+// メニューラベル（UTF-8）。
+static void test_menu_labels() {
     Game g(nullptr);
     skip_naming(g);
-    assert(label_romaji(g, 0) == "gohan");    // ごはん  (FEED)
-    assert(label_romaji(g, 1) == "naderu");   // なでる  (PET)
-    assert(label_romaji(g, 2) == "karu");     // かる    (SHEAR)
-    assert(label_romaji(g, 3) == "asobu");    // あそぶ  (MINI)
-    assert(label_romaji(g, 4) == "modoru");   // もどる  (BACK)
+    assert(std::string(g.menuLabel(0)) == "ごはん");    // FEED
+    assert(std::string(g.menuLabel(1)) == "なでる");    // PET
+    assert(std::string(g.menuLabel(2)) == "毛刈り");    // SHEAR
+    assert(std::string(g.menuLabel(3)) == "ゲーム");    // MINI
+    assert(std::string(g.menuLabel(4)) == "もどる");    // BACK
 }
 
 static void test_menu_label_polish_for_wild() {
@@ -388,20 +382,113 @@ static void test_menu_label_polish_for_wild() {
     d.stage = uint8_t(Game::Stage::YOUNG_WILD);
     Game g(nullptr, &d);
     assert(g.family() == Game::Family::WILD);
-    assert(label_romaji(g, 2) == "migaku");   // みがく (POLISH)
+    assert(std::string(g.menuLabel(2)) == "角研ぎ");   // POLISH（ワイルド系は毛ではなく角）
 }
 
-static void test_menu_labels_not_empty_and_bounded() {
-    // 2 倍表示（16px/字）で < > と重ならないよう 1〜4 字（kana::MAX_NAME）
-    Game g(nullptr);
-    skip_naming(g);
-    for (int i = 0; i < Game::MENU_COUNT; ++i) {
-        const uint8_t* l = g.menuLabel(i);
-        int n = 0;
-        while (n < kana::MAX_NAME && l[n] != kana::END) ++n;
-        assert(n >= 1 && n <= kana::MAX_NAME);
+static void test_menu_labels_renderable_and_bounded() {
+    // 全字がフォントに収録されていて（未収録は空白表示になる）、2 倍表示（16px/字）で
+    // 左右の < > と重ならない幅に収まる。ワイルド系のラベルも含めて確認する。
+    Game base(nullptr);
+    skip_naming(base);
+    GameSaveData d = base.saveData();
+    d.stage = uint8_t(Game::Stage::YOUNG_WILD);
+    Game wild(nullptr, &d);
+    Game moko(nullptr);
+    skip_naming(moko);
+
+    for (const Game* g : { &moko, &wild }) {
+        for (int i = 0; i < Game::MENU_COUNT; ++i) {
+            const char* label = g->menuLabel(i);
+            assert(*label != '\0');
+            assert(font::textWidth(label) <= 40);          // 2 倍で 80px まで（矢印間は 92px）
+            const char* p = label;
+            while (*p) {
+                uint32_t cp = font::decodeUtf8(p);
+                assert(cp >= 0x80 && font::jaGlyph(cp) != nullptr);
+            }
+        }
     }
-    assert(g.menuLabel(Game::MENU_COUNT)[0] == kana::END);   // 範囲外は空ラベル
+    assert(*moko.menuLabel(Game::MENU_COUNT) == '\0');      // 範囲外は空ラベル
+}
+
+// UTF-8 デコード / 日本語グリフ / 表示幅。
+static uint32_t decode_first(const char* s) {
+    const char* p = s;
+    return font::decodeUtf8(p);
+}
+
+static void test_utf8_decode() {
+    assert(decode_first("A")        == 0x41);
+    assert(decode_first("\xE3\x81\x82") == 0x3042);   // あ (3 バイト)
+    assert(decode_first("\xE7\xBE\x8A") == 0x7F8A);   // 羊
+    const char* p = "aあ";
+    assert(font::decodeUtf8(p) == 'a');
+    assert(font::decodeUtf8(p) == 0x3042);
+    assert(*p == '\0');                               // 読み進めた先が終端
+}
+
+static void test_utf8_decode_invalid_is_replacement() {
+    // 不正な先頭バイト・継続バイト不足は U+FFFD を返し、必ず 1 バイト以上進む（無限ループ防止）
+    const char* p = "\xFF";
+    assert(font::decodeUtf8(p) == font::REPLACEMENT);
+    assert(*p == '\0');
+    const char* q = "\xE3\x81";                       // 3 バイト文字が途中で切れている
+    assert(font::decodeUtf8(q) == font::REPLACEMENT);
+    assert(*q == '\0');                               // 終端を越えて読まない
+    const char* r = "\x81";                           // 単独の継続バイト
+    assert(font::decodeUtf8(r) == font::REPLACEMENT);
+    assert(*r == '\0');
+}
+
+static void test_ja_glyph_lookup() {
+    // カタカナ「ア」・漢字「羊」（美咲ゴシックの実データ）
+    static const uint8_t kA[8]   = { 0x7E, 0x02, 0x14, 0x18, 0x10, 0x10, 0x20, 0x00 };
+    static const uint8_t kHitsuji[8] = { 0x44, 0xFE, 0x10, 0x7C, 0x10, 0xFE, 0x10, 0x00 };
+    assert(font::jaGlyph(0x30A2) && std::memcmp(font::jaGlyph(0x30A2), kA, 8) == 0);
+    assert(font::jaGlyph(0x7F8A) && std::memcmp(font::jaGlyph(0x7F8A), kHitsuji, 8) == 0);
+}
+
+static void test_ja_glyph_covers_game_vocabulary() {
+    // ゲーム内で使う予定の字が JIS 第一水準に入っている
+    const char* used = "羊毛刈餌世話行天寿眠決定消小空腹幸福";
+    const char* p = used;
+    while (*p) {
+        uint32_t cp = font::decodeUtf8(p);
+        assert(font::jaGlyph(cp) != nullptr);
+    }
+}
+
+static void test_ja_glyph_matches_kana_table() {
+    // ひらがなは index 版（名前用）と Unicode 版で同じ字形（生成の食い違い検出）
+    assert(std::memcmp(font::jaGlyph(0x3042), font::kanaGlyph(0),  8) == 0);   // あ
+    assert(std::memcmp(font::jaGlyph(0x3093), font::kanaGlyph(45), 8) == 0);   // ん
+    assert(std::memcmp(font::jaGlyph(0x3071), font::kanaGlyph(66), 8) == 0);   // ぱ
+}
+
+static void test_ja_glyph_unsupported_is_null() {
+    assert(font::jaGlyph('A') == nullptr);            // ASCII は 5x7 フォント側
+    assert(font::jaGlyph(0x1F600) == nullptr);        // 絵文字
+}
+
+static void test_text_width_mixed() {
+    assert(font::textWidth("") == 0);
+    assert(font::textWidth("AB") == 12);              // ASCII は 6px
+    assert(font::textWidth("あ") == 8);               // 日本語は 8px
+    assert(font::textWidth("か行") == 16);
+    assert(font::textWidth("A あ") == 6 + 6 + 8);
+    assert(font::textWidth("\xFF") == 8);             // 不正バイトも 1 字（8px）として扱う
+}
+
+static void test_naming_row_labels_are_renderable() {
+    // 行ラベル（"あ行" 等）の全字が日本語フォントに収録されている（未収録だと空白で表示される）
+    for (int i = 0; i < kana::ROW_COUNT; ++i) {
+        const char* p = kana::ROWS[i].label;
+        assert(*p != '\0');
+        while (*p) {
+            uint32_t cp = font::decodeUtf8(p);
+            assert(cp < 0x80 || font::jaGlyph(cp) != nullptr);
+        }
+    }
 }
 
 int main() {
@@ -430,9 +517,17 @@ int main() {
     RUN(test_kana_glyph_all_distinct);
     RUN(test_kana_glyph_matches_misaki_a);
     RUN(test_kana_glyph_out_of_range_is_blank);
-    RUN(test_menu_labels_are_hiragana);
+    RUN(test_menu_labels);
     RUN(test_menu_label_polish_for_wild);
-    RUN(test_menu_labels_not_empty_and_bounded);
+    RUN(test_menu_labels_renderable_and_bounded);
+    RUN(test_utf8_decode);
+    RUN(test_utf8_decode_invalid_is_replacement);
+    RUN(test_ja_glyph_lookup);
+    RUN(test_ja_glyph_covers_game_vocabulary);
+    RUN(test_ja_glyph_matches_kana_table);
+    RUN(test_ja_glyph_unsupported_is_null);
+    RUN(test_text_width_mixed);
+    RUN(test_naming_row_labels_are_renderable);
 
     std::printf("\n=== all tests passed ===\n\n");
     return 0;

@@ -95,38 +95,44 @@ void SSD1306::drawSprite2x(const uint8_t sprite[24][3], int x, int y) {
     }
 }
 
-void SSD1306::drawText(const char* s, int x, int y, bool inverse) {
+void SSD1306::drawGlyph8(const uint8_t* glyph, int x, int y, bool inverse, int scale) {
+    for (int row = 0; row < font::KANA_H; ++row) {
+        for (int col = 0; col < font::KANA_W; ++col) {
+            bool on = glyph && ((glyph[row] >> (7 - col)) & 1);
+            if (inverse) on = !on;
+            fillRect(x + col * scale, y + row * scale, scale, scale, on);
+        }
+    }
+}
+
+void SSD1306::drawText(const char* s, int x, int y, bool inverse, int scale) {
     while (*s) {
-        const uint8_t* g = font::glyph(*s);
-        for (int col = 0; col < font::CHAR_W; ++col) {
-            uint8_t bits = g[col];
-            for (int row = 0; row < font::CHAR_H; ++row) {
-                bool on = (bits >> row) & 1;
-                if (inverse) on = !on;
-                setPixel(x + col, y + row, on);
-            }
-            // spacing column
-            if (inverse) {
+        const uint32_t cp = font::decodeUtf8(s);
+        if (cp < 0x80) {
+            const uint8_t* g = font::glyph(char(cp));
+            for (int col = 0; col < font::CHAR_W; ++col) {
+                uint8_t bits = g[col];
                 for (int row = 0; row < font::CHAR_H; ++row) {
-                    setPixel(x + font::CHAR_W, y + row, true);
+                    bool on = (bits >> row) & 1;
+                    if (inverse) on = !on;
+                    fillRect(x + col * scale, y + row * scale, scale, scale, on);
+                }
+                // spacing column
+                if (inverse) {
+                    fillRect(x + font::CHAR_W * scale, y, scale, font::CHAR_H * scale, true);
                 }
             }
+            x += font::ADVANCE * scale;
+        } else {
+            drawGlyph8(font::jaGlyph(cp), x, y, inverse, scale);
+            x += font::KANA_ADVANCE * scale;
         }
-        x += font::ADVANCE;
-        ++s;
     }
 }
 
 void SSD1306::drawKana(const uint8_t* kana_indices, int x, int y, bool inverse, int scale) {
     for (int n = 0; n < kana::MAX_NAME && kana_indices[n] != kana::END; ++n) {
-        const uint8_t* g = font::kanaGlyph(kana_indices[n]);
-        for (int row = 0; row < font::KANA_H; ++row) {
-            for (int col = 0; col < font::KANA_W; ++col) {
-                bool on = (g[row] >> (7 - col)) & 1;
-                if (inverse) on = !on;
-                fillRect(x + col * scale, y + row * scale, scale, scale, on);
-            }
-        }
+        drawGlyph8(font::kanaGlyph(kana_indices[n]), x, y, inverse, scale);
         x += font::KANA_ADVANCE * scale;
     }
 }

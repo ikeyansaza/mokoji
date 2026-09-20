@@ -154,13 +154,13 @@ void Display::drawMenu(const Game& g) {
     _oled->drawText(status, 0, 0);
     _oled->drawKana(g.nameKana(), 96, 0);
 
-    // 中段：選択中の項目だけを 2 倍のひらがなで中央に出す（16x16、余白を確保）。
+    // 中段：選択中の項目だけを 2 倍（日本語 16x16）で中央に出す。余白を確保するため 1 項目のみ。
     // 左右の < > は「L/R で切り替えられる」合図、下のドットは 5 項目中の現在位置。
     int cursor = g.menuCursor();
-    const uint8_t* label = g.menuLabel(cursor);
+    const char* label = g.menuLabel(cursor);
     constexpr int scale = 2;
-    int width = kanaLen(label) * font::KANA_ADVANCE * scale;
-    _oled->drawKana(label, (SSD1306::W - width) / 2, 24, false, scale);
+    int width = font::textWidth(label) * scale;
+    _oled->drawText(label, (SSD1306::W - width) / 2, 24, false, scale);
     _oled->drawText("<", 12, 28);
     _oled->drawText(">", SSD1306::W - 12 - font::CHAR_W, 28);
 
@@ -191,21 +191,20 @@ void Display::drawSleep(const Game& g) {
 }
 
 void Display::drawGrave(const Game& g) {
-    _oled->drawText("+ MEMORIES +", 0, 0);
+    _oled->drawText("おもいで", 0, 0);
     int n = g.graveCount();
     // 新しい順に最大 3 件を表示（i=0 が最新）
     int show = (n > 3) ? 3 : n;
     for (int i = 0; i < show; ++i) {
         const GraveRecord& gr = g.grave(n - 1 - i);
         char line[40];
-        // TODO Phase 2: ひらがなフォント実装後に「天寿をまっとう」「旅立ち」へ。
-        // 暫定 ASCII: '*' = 天寿（age）、'x' = 餓死/不幸死（status）
-        char tag = (gr.death_cause == uint8_t(Game::DeathCause::AGE)) ? '*' : 'x';
-        std::snprintf(line, sizeof(line), "%-4s %-4s %dd %c",
+        // 天寿 = 寿命でまっとう（age）、旅立ち = 餓死/不幸死（status）
+        const char* tag = (gr.death_cause == uint8_t(Game::DeathCause::AGE)) ? "天寿" : "旅立ち";
+        std::snprintf(line, sizeof(line), "%-4s %-4s %d日 %s",
                       gr.name, gr.breed, int(gr.age_days), tag);
         _oled->drawText(line, 0, 16 + i * 12);
     }
-    _oled->drawText("press btn", 0, 56);
+    _oled->drawText("ボタンをおす", 0, 56);
 }
 
 const uint8_t (*Display::selectSprite(const Game& g, Game::Face face))[3] {
@@ -308,27 +307,27 @@ void Display::drawNaming(const Game& g) {
     char buf[32];
     switch (g.namingMode()) {
         case Game::NamingMode::SELECT_MODE: {
-            _oled->drawText("name?", 0, 0);
+            _oled->drawText("なまえ", 0, 0);
             int cur = g.namingCursor();
             // 上：preset
             if (cur == 0) {
                 _oled->fillRect(0, 18, 80, 12, true);
-                _oled->drawText("preset", 4, 20, true);
+                _oled->drawText("おまかせ", 4, 20, true);
             } else {
-                _oled->drawText("preset", 4, 20, false);
+                _oled->drawText("おまかせ", 4, 20, false);
             }
             // 下：type
             if (cur == 1) {
                 _oled->fillRect(0, 36, 80, 12, true);
-                _oled->drawText("type", 4, 38, true);
+                _oled->drawText("じぶんで", 4, 38, true);
             } else {
-                _oled->drawText("type", 4, 38, false);
+                _oled->drawText("じぶんで", 4, 38, false);
             }
-            _oled->drawText("L/R / OK", 0, 56);
+            _oled->drawText("< > えらぶ  OK 決定", 0, 56);
             break;
         }
         case Game::NamingMode::PRESET_PICK: {
-            _oled->drawText("preset", 0, 0);
+            _oled->drawText("おまかせ", 0, 0);
             int idx = g.namingCursor();
             // 中央寄せで現在の preset 名を表示
             int width = kanaLen(kana::PRESETS[idx]) * font::KANA_ADVANCE;
@@ -337,7 +336,7 @@ void Display::drawNaming(const Game& g) {
             _oled->drawKana(kana::PRESETS[idx], x, 28);
             std::snprintf(buf, sizeof(buf), "%d/%d", idx + 1, kana::PRESET_COUNT);
             _oled->drawText(buf, 0, 16);
-            _oled->drawText("< L  R >  OK", 0, 56);
+            _oled->drawText("< > えらぶ  OK 決定", 0, 56);
             break;
         }
         case Game::NamingMode::INPUT_ROW: {
@@ -345,19 +344,19 @@ void Display::drawNaming(const Game& g) {
             drawNameInput(g.inputBuffer());
             // 中段：行を選ぶ
             int cur = g.namingCursor();
-            const int total = kana::ROW_COUNT + 2;   // + BS + OK
+            const int total = kana::ROW_COUNT + 2;   // + けす + 決定
             const char* label;
             if (cur < kana::ROW_COUNT)              label = kana::ROWS[cur].label;
-            else if (cur == kana::ROW_COUNT)        label = "BS";
-            else                                    label = "OK";
-            int width = std::strlen(label) * 6;
+            else if (cur == kana::ROW_COUNT)        label = "けす";
+            else                                    label = "決定";
+            int width = font::textWidth(label);
             int x = (128 - width) / 2;
             if (x < 0) x = 0;
             _oled->fillRect(x - 2, 26, width + 4, 12, true);
             _oled->drawText(label, x, 28, true);
             std::snprintf(buf, sizeof(buf), "%d/%d", cur + 1, total);
             _oled->drawText(buf, 0, 44);
-            _oled->drawText("< L  R >  OK", 0, 56);
+            _oled->drawText("< > えらぶ  OK 決定", 0, 56);
             break;
         }
         case Game::NamingMode::INPUT_CHAR: {
@@ -370,9 +369,9 @@ void Display::drawNaming(const Game& g) {
             int x = (128 - width) / 2;
             _oled->fillRect(x - 2, 26, width + 4, 12, true);
             _oled->drawKana(selected, x, 28, true);
-            std::snprintf(buf, sizeof(buf), "%s row %d/%d", row.label, cur + 1, row.length);
+            std::snprintf(buf, sizeof(buf), "%s %d/%d", row.label, cur + 1, row.length);
             _oled->drawText(buf, 0, 44);
-            _oled->drawText("< L  R >  OK", 0, 56);
+            _oled->drawText("< > えらぶ  OK 決定", 0, 56);
             break;
         }
     }

@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
-"""美咲フォント (BDF) から 8x8 ひらがなグリフを抜き出し、kana_font.h を生成する。
+"""美咲フォント (BDF) から 8x8 グリフを抜き出し、kana_font.h / ja_font.h を生成する。
+
+  kana_font.h : ひらがな 75 字（kana.cpp の index 順。名前の入力・保存用）
+  ja_font.h   : ひらがな・カタカナ・記号・JIS 第一水準漢字（Unicode 順。UTF-8 テキスト表示用）
 
 使い方:
-    python3 kana_font_gen.py path/to/misaki_gothic.bdf      # kana_font.h を上書き生成
-    python3 kana_font_gen.py path/to/misaki_gothic.bdf preview   # ASCII で確認
+    python3 kana_font_gen.py path/to/misaki_gothic.bdf      # 2 つのヘッダを上書き生成
+    python3 kana_font_gen.py path/to/misaki_gothic.bdf preview   # ひらがなを ASCII で確認
 
 BDF の入手先: https://littlelimit.net/misaki.htm （misaki_bdf_*.zip の misaki_gothic.bdf）
 ライセンス: third_party/misaki/misaki.txt（商用可・再配布自由・無保証）
@@ -62,6 +65,22 @@ def parse_bdf(path):
     return glyphs, fbb
 
 
+def jis_level1_kanji():
+    """JIS X 0208 第一水準漢字（区 16-47）の集合。珍しい字（第二水準）は容量削減のため外す。"""
+    chars = set()
+    for row in range(16, 48):
+        for cell in range(1, 95):
+            try:
+                chars.add(bytes([0xA0 + row, 0xA0 + cell]).decode("euc_jp"))
+            except UnicodeDecodeError:
+                pass
+    return {ord(c) for c in chars}
+
+
+def is_cjk_kanji(cp):
+    return 0x4E00 <= cp <= 0x9FFF
+
+
 def to_cell(bbx, rows, fbb):
     """BDF の切り詰めビットマップを 8x8 セル（1 行 1 バイト、bit7 = 左端）に置き直す。"""
     w, h, xoff, yoff = bbx
@@ -74,6 +93,38 @@ def to_cell(bbx, rows, fbb):
         if 0 <= r < CELL:
             out[r] = (byte >> xoff) & 0xFF
     return out
+
+
+def write_ja_font(glyphs, fbb):
+    """ASCII 以外（cp >= 0x80、BMP）の記号・かな・JIS 第一水準漢字を Unicode 順に書き出す。"""
+    level1 = jis_level1_kanji()
+    cps = sorted(
+        cp for cp in glyphs
+        if 0x80 <= cp <= 0xFFFF and (not is_cjk_kanji(cp) or cp in level1)
+    )
+    lines = [
+        "// 自動生成ファイル。手編集しない。生成元: kana_font_gen.py",
+        "// フォント: 美咲ゴシック 8x8 (Copyright (C) 2002-2021 Num Kadoma)",
+        "//   ライセンス: third_party/misaki/misaki.txt",
+        "// 内容: ASCII 以外の記号・ひらがな・カタカナ・JIS 第一水準漢字。cp の昇順（二分探索用）。",
+        "// グリフは 1 字 8 バイト（1 行 1 バイト、bit7 = 左端）。",
+        "#pragma once",
+        "#include <cstdint>",
+        "",
+        f"constexpr int JA_FONT_COUNT = {len(cps)};",
+        "",
+        "constexpr uint16_t kJaCodepoints[JA_FONT_COUNT] = {",
+    ]
+    for i in range(0, len(cps), 12):
+        lines.append("    " + ",".join(f"0x{cp:04X}" for cp in cps[i:i + 12]) + ",")
+    lines += ["};", "", "constexpr uint8_t kJaFont[JA_FONT_COUNT][8] = {"]
+    for cp in cps:
+        bbx, rows = glyphs[cp]
+        cell = to_cell(bbx, rows, fbb)
+        lines.append("    {" + ",".join(f"0x{b:02X}" for b in cell) + "},")
+    lines.append("};")
+    (HERE / "ja_font.h").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print(f"ja_font.h を生成しました（{len(cps)} 字）")
 
 
 def main():
@@ -96,6 +147,8 @@ def main():
             for b in cell:
                 print("  " + "".join("#" if b & (0x80 >> c) else "." for c in range(CELL)))
         return
+
+    write_ja_font(glyphs, fbb)
 
     lines = [
         "// 自動生成ファイル。手編集しない。生成元: kana_font_gen.py",

@@ -24,7 +24,7 @@ extern const Info TABLE[COUNT];
 
 // 入力 UI の「行」構造。たとえば「あ行」= a/i/u/e/o = index 0..4。
 struct Row {
-    const char* label;    // UI で表示する短いラベル ("a-", "ka-" 等)
+    const char* label;    // UI で表示する短いラベル（UTF-8。"あ行"、"か行" 等）
     uint8_t     start;    // この行の最初の index
     uint8_t     length;   // この行の文字数（3 or 4 or 5）
 };
