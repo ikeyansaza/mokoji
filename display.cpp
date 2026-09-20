@@ -10,7 +10,8 @@ Display::Display(SSD1306* oled) : _oled(oled) {}
 void Display::draw(const Game& g) {
     _oled->clear();
 
-    if (g.sleeping()) {
+    // 就寝中でもメニューは開ける（寝顔を撫でる用）ので、MENU 画面のときは通常描画に回す。
+    if (g.sleeping() && g.screen() != Game::Screen::MENU) {
         drawSleep(g);
         return;
     }

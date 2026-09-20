@@ -270,6 +270,62 @@ static void test_save_and_load_round_trip() {
     assert(g1.graveCount() == g2.graveCount());
 }
 
+// 就寝中の Game を作る（テスト用ヘルパ）。
+// tick で就寝させると数日分かかるため、セーブデータ経由で睡眠状態を注入する。
+// 空腹・幸福を中途半端な値、wool を刈れる量にして、行動が実効化されたら差が出るようにしておく。
+static Game make_sleeping_game() {
+    Game base(nullptr);
+    skip_naming(base);
+    GameSaveData d = base.saveData();
+    d.sleeping = 1;
+    d.sleepy   = 90;
+    d.hunger   = 50;
+    d.happy    = 50;
+    d.wool     = 50;
+    return Game(nullptr, &d);
+}
+
+// メニューから指定の Action を選んで確定する（メニュー項目の並びに依存しない）。
+static void menu_select(Game& g, Game::Action act) {
+    for (int i = 0; i < Game::MENU_COUNT; ++i) {
+        if (g.menuAction(i) == act) { menu_action(g, i); return; }
+    }
+    assert(false && "action not in menu");
+}
+
+static void test_sleeping_can_open_menu() {
+    Game g = make_sleeping_game();
+    assert(g.sleeping());
+    g.onButton(Game::Button::CENTER);
+    assert(g.screen() == Game::Screen::MENU);
+    g.onButton(Game::Button::RIGHT);
+    assert(g.menuCursor() == 1);
+    assert(g.sleeping());
+}
+
+static void test_sleeping_pet_raises_happy_without_waking() {
+    Game g = make_sleeping_game();
+    menu_select(g, Game::Action::PET);
+    assert(g.happy() == 60);                       // 起きている時の +20 より控えめ
+    assert(g.sleeping());                          // 撫でても起きない
+    assert(g.screen() == Game::Screen::MAIN);
+}
+
+static void test_sleeping_other_actions_are_rejected() {
+    const Game::Action rejected[] = {
+        Game::Action::FEED, Game::Action::SHEAR, Game::Action::MINI,
+    };
+    for (Game::Action act : rejected) {
+        Game g = make_sleeping_game();
+        menu_select(g, act);
+        assert(g.hunger() == 50);
+        assert(g.happy()  == 50);
+        assert(g.wool()   == 50);
+        assert(g.sleeping());
+        assert(g.screen() == Game::Screen::MAIN);
+    }
+}
+
 int main() {
     std::setbuf(stdout, nullptr);
     std::srand(42);   // 進化判定の再現性のため固定シード
@@ -289,6 +345,9 @@ int main() {
     RUN(test_starvation_marked_as_status_death);
     RUN(test_dirty_flag_lifecycle);
     RUN(test_save_and_load_round_trip);
+    RUN(test_sleeping_can_open_menu);
+    RUN(test_sleeping_pet_raises_happy_without_waking);
+    RUN(test_sleeping_other_actions_are_rejected);
 
     std::printf("\n=== all tests passed ===\n\n");
     return 0;
