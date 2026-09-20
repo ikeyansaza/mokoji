@@ -1,5 +1,6 @@
 #include "ssd1306.h"
 #include "font.h"
+#include "kana.h"
 #include <cstring>
 
 namespace {
@@ -113,6 +114,20 @@ void SSD1306::drawText(const char* s, int x, int y, bool inverse) {
         }
         x += font::ADVANCE;
         ++s;
+    }
+}
+
+void SSD1306::drawKana(const uint8_t* kana_indices, int x, int y, bool inverse, int scale) {
+    for (int n = 0; n < kana::MAX_NAME && kana_indices[n] != kana::END; ++n) {
+        const uint8_t* g = font::kanaGlyph(kana_indices[n]);
+        for (int row = 0; row < font::KANA_H; ++row) {
+            for (int col = 0; col < font::KANA_W; ++col) {
+                bool on = (g[row] >> (7 - col)) & 1;
+                if (inverse) on = !on;
+                fillRect(x + col * scale, y + row * scale, scale, scale, on);
+            }
+        }
+        x += font::KANA_ADVANCE * scale;
     }
 }
 

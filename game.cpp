@@ -12,6 +12,7 @@ constexpr int      RARE_PROB      = 5;                   // %（実際は /128 �
 constexpr int      WALK_LEFT      = 0;
 constexpr int      WALK_RIGHT     = 80;   // 128 - 48 = 80（右端余白ゼロ）
 constexpr int      DECAY_HOURS    = 3;                   // 空腹/幸福の減少間隔（game-hour）
+constexpr int      SLEEP_PET_HAPPY = 10;                  // 就寝中に撫でた時の幸福度増分（起床時 PET は +20）
 constexpr int      START_HOUR     = 8;                   // 起動時のゲーム内時刻（朝 8 時）→ 即就寝を防ぐ
 constexpr int      LIFESPAN_MIN   = 10;                  // 自然死 寿命下限（リアル日）
 constexpr int      LIFESPAN_RANGE = 6;                   // [10, 15] のレンジ
@@ -19,16 +20,27 @@ constexpr int      LIFESPAN_RANGE = 6;                   // [10, 15] のレン�
 inline uint32_t rand7() { return get_rand_32() & 0x7Fu; }
 inline uint32_t rand8() { return get_rand_32() & 0xFFu; }
 
-const char* const kMenuLabelsDefault[Game::MENU_COUNT] = { "EAT", "PET", "CUT", "FUN", "BACK" };
+// メニューラベルは 8x8 ひらがな（kana index 列、END 終端）。2 倍表示で左右の < > と重ならない 4 字まで。
+// index は kana.cpp の並び。打ち間違いは test_menu_labels_are_hiragana が romaji で検出する。
+constexpr uint8_t kLabelEat[]    = { 50, 25, 45, kana::END };   // ごはん
+constexpr uint8_t kLabelPet[]    = { 20, 59, 40, kana::END };   // なでる
+constexpr uint8_t kLabelCut[]    = {  5, 40, kana::END };       // かる
+constexpr uint8_t kLabelFun[]    = {  0, 14, 63, kana::END };   // あそぶ
+constexpr uint8_t kLabelBack[]   = { 34, 60, 40, kana::END };   // もどる
+constexpr uint8_t kLabelPolish[] = { 31, 46,  7, kana::END };   // みがく
+constexpr uint8_t kLabelNone[]   = { kana::END };
+const uint8_t* const kMenuLabelsDefault[Game::MENU_COUNT] = {
+    kLabelEat, kLabelPet, kLabelCut, kLabelFun, kLabelBack
+};
 const Game::Action kMenuActionsDefault[Game::MENU_COUNT] = {
     Game::Action::FEED, Game::Action::PET, Game::Action::SHEAR, Game::Action::MINI,
     Game::Action::NONE   // BACK
 };
 }  // namespace
 
-const char* Game::menuLabel(int i) const {
-    if (i < 0 || i >= MENU_COUNT) return "";
-    if (i == 2 && family() == Family::WILD) return "POLI";
+const uint8_t* Game::menuLabel(int i) const {
+    if (i < 0 || i >= MENU_COUNT) return kLabelNone;
+    if (i == 2 && family() == Family::WILD) return kLabelPolish;
     return kMenuLabelsDefault[i];
 }
 
@@ -279,7 +291,9 @@ void Game::updateWalk() {
 }
 
 void Game::onButton(Button btn) {
-    if (_sleeping) return;
+    // 就寝中に操作できるのは MAIN / MENU のみ（墓・命名は就寝中に到達しない想定だが念のため弾く）。
+    // 行動の可否は doAction 側で判定する。
+    if (_sleeping && _screen != Screen::MAIN && _screen != Screen::MENU) return;
 
     // LEFT_LONG はバックスペース専用イベント。NAMING の入力中以外は無視。
     if (btn == Button::LEFT_LONG) {
@@ -326,6 +340,17 @@ void Game::onButton(Button btn) {
 }
 
 void Game::doAction(Action act) {
+    // 就寝中は寝顔を撫でる（PET）だけ許可する。幸福度は起きている時より控えめに上がり、
+    // 羊は起きない。傾向スコア・アニメーション・効果音も触らない（起こさないため）。
+    // それ以外の行動は何も起こさない。
+    if (_sleeping) {
+        if (act == Action::PET) {
+            _happy = std::min(100, _happy + SLEEP_PET_HAPPY);
+            _dirty = true;
+        }
+        return;
+    }
+
     switch (act) {
         case Action::FEED:
             _hunger = std::min(100, _hunger + 30);

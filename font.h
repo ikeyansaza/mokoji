@@ -13,4 +13,14 @@ constexpr int ADVANCE  = CHAR_W + SPACING;  // 6 px / char
 // 5バイトのコラムデータを返す。範囲外は空白扱い。
 const uint8_t* glyph(char c);
 
+// 8x8 ひらがな（美咲ゴシック）。kana.h の index で引く。
+// 1 グリフ = 8 バイト（1 行 1 バイト、bit 7 が左端、先頭バイトが最上段）。
+// 実際の字は 7x7 に収まっていて、右列・下段が字間・行間になる。
+constexpr int KANA_W       = 8;
+constexpr int KANA_H       = 8;
+constexpr int KANA_ADVANCE = 8;   // 字送り。字形側に余白があるので詰めない
+
+// index が範囲外（kana::END を含む）のときは空グリフを返す。
+const uint8_t* kanaGlyph(uint8_t index);
+
 }  // namespace font

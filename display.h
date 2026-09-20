@@ -13,6 +13,7 @@ private:
     void drawMain(const Game& g);
     void drawMenu(const Game& g);
     void drawSleep(const Game& g);
+    void drawNameInput(const uint8_t* buffer);
     void drawGrave(const Game& g);
     void drawNaming(const Game& g);
 

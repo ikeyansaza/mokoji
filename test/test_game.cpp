@@ -5,10 +5,13 @@
 //   make test
 
 #include "game.h"
+#include "font.h"
+#include "kana.h"
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <string>
 
 #define RUN(t) do { \
     std::fprintf(stderr, "[run ] %s\n", #t); \
@@ -270,6 +273,137 @@ static void test_save_and_load_round_trip() {
     assert(g1.graveCount() == g2.graveCount());
 }
 
+// 就寝中の Game を作る（テスト用ヘルパ）。
+// tick で就寝させると数日分かかるため、セーブデータ経由で睡眠状態を注入する。
+// 空腹・幸福を中途半端な値、wool を刈れる量にして、行動が実効化されたら差が出るようにしておく。
+static Game make_sleeping_game() {
+    Game base(nullptr);
+    skip_naming(base);
+    GameSaveData d = base.saveData();
+    d.sleeping = 1;
+    d.sleepy   = 90;
+    d.hunger   = 50;
+    d.happy    = 50;
+    d.wool     = 50;
+    return Game(nullptr, &d);
+}
+
+// メニューから指定の Action を選んで確定する（メニュー項目の並びに依存しない）。
+static void menu_select(Game& g, Game::Action act) {
+    for (int i = 0; i < Game::MENU_COUNT; ++i) {
+        if (g.menuAction(i) == act) { menu_action(g, i); return; }
+    }
+    assert(false && "action not in menu");
+}
+
+static void test_sleeping_can_open_menu() {
+    Game g = make_sleeping_game();
+    assert(g.sleeping());
+    g.onButton(Game::Button::CENTER);
+    assert(g.screen() == Game::Screen::MENU);
+    g.onButton(Game::Button::RIGHT);
+    assert(g.menuCursor() == 1);
+    assert(g.sleeping());
+}
+
+static void test_sleeping_pet_raises_happy_without_waking() {
+    Game g = make_sleeping_game();
+    menu_select(g, Game::Action::PET);
+    assert(g.happy() == 60);                       // 起きている時の +20 より控えめ
+    assert(g.sleeping());                          // 撫でても起きない
+    assert(g.screen() == Game::Screen::MAIN);
+}
+
+static void test_sleeping_other_actions_are_rejected() {
+    const Game::Action rejected[] = {
+        Game::Action::FEED, Game::Action::SHEAR, Game::Action::MINI,
+    };
+    for (Game::Action act : rejected) {
+        Game g = make_sleeping_game();
+        menu_select(g, act);
+        assert(g.hunger() == 50);
+        assert(g.happy()  == 50);
+        assert(g.wool()   == 50);
+        assert(g.sleeping());
+        assert(g.screen() == Game::Screen::MAIN);
+    }
+}
+
+// 8x8 ひらがなグリフ。1 行 1 バイト、bit 7 が左端（BDF と同じ並び）。
+static bool glyph_has_pixel(const uint8_t* g) {
+    for (int r = 0; r < font::KANA_H; ++r) if (g[r]) return true;
+    return false;
+}
+
+static void test_kana_glyph_all_defined() {
+    for (uint8_t i = 0; i < kana::COUNT; ++i) {
+        const uint8_t* g = font::kanaGlyph(i);
+        assert(g != nullptr);
+        assert(glyph_has_pixel(g));                // 空グリフ = 生成漏れ
+    }
+}
+
+static void test_kana_glyph_all_distinct() {
+    // 濁点・半濁点・小書き文字も別字形になっている（index のずれ・コピー漏れ検出）
+    for (uint8_t i = 0; i < kana::COUNT; ++i) {
+        for (uint8_t j = i + 1; j < kana::COUNT; ++j) {
+            assert(std::memcmp(font::kanaGlyph(i), font::kanaGlyph(j), font::KANA_H) != 0);
+        }
+    }
+}
+
+static void test_kana_glyph_matches_misaki_a() {
+    // 美咲ゴシック「あ」（index 0）。BDF の 7x7 ビットマップを 8x8 セル上詰めで置いたもの。
+    static const uint8_t kExpected[8] = { 0x20, 0x7C, 0x20, 0x3C, 0x6A, 0xB2, 0x64, 0x00 };
+    assert(std::memcmp(font::kanaGlyph(0), kExpected, 8) == 0);
+}
+
+static void test_kana_glyph_out_of_range_is_blank() {
+    // END (0xFF) や範囲外は描画側が安全に扱えるよう空グリフを返す
+    assert(!glyph_has_pixel(font::kanaGlyph(kana::END)));
+    assert(!glyph_has_pixel(font::kanaGlyph(kana::COUNT)));
+}
+
+// メニューラベル（ひらがな）。index の打ち間違いは romaji 変換で検出する。
+static std::string label_romaji(const Game& g, int i) {
+    char buf[16];
+    kana::toRomaji(g.menuLabel(i), buf, sizeof(buf));
+    return buf;
+}
+
+static void test_menu_labels_are_hiragana() {
+    Game g(nullptr);
+    skip_naming(g);
+    assert(label_romaji(g, 0) == "gohan");    // ごはん  (FEED)
+    assert(label_romaji(g, 1) == "naderu");   // なでる  (PET)
+    assert(label_romaji(g, 2) == "karu");     // かる    (SHEAR)
+    assert(label_romaji(g, 3) == "asobu");    // あそぶ  (MINI)
+    assert(label_romaji(g, 4) == "modoru");   // もどる  (BACK)
+}
+
+static void test_menu_label_polish_for_wild() {
+    Game base(nullptr);
+    skip_naming(base);
+    GameSaveData d = base.saveData();
+    d.stage = uint8_t(Game::Stage::YOUNG_WILD);
+    Game g(nullptr, &d);
+    assert(g.family() == Game::Family::WILD);
+    assert(label_romaji(g, 2) == "migaku");   // みがく (POLISH)
+}
+
+static void test_menu_labels_not_empty_and_bounded() {
+    // 2 倍表示（16px/字）で < > と重ならないよう 1〜4 字（kana::MAX_NAME）
+    Game g(nullptr);
+    skip_naming(g);
+    for (int i = 0; i < Game::MENU_COUNT; ++i) {
+        const uint8_t* l = g.menuLabel(i);
+        int n = 0;
+        while (n < kana::MAX_NAME && l[n] != kana::END) ++n;
+        assert(n >= 1 && n <= kana::MAX_NAME);
+    }
+    assert(g.menuLabel(Game::MENU_COUNT)[0] == kana::END);   // 範囲外は空ラベル
+}
+
 int main() {
     std::setbuf(stdout, nullptr);
     std::srand(42);   // 進化判定の再現性のため固定シード
@@ -289,6 +423,16 @@ int main() {
     RUN(test_starvation_marked_as_status_death);
     RUN(test_dirty_flag_lifecycle);
     RUN(test_save_and_load_round_trip);
+    RUN(test_sleeping_can_open_menu);
+    RUN(test_sleeping_pet_raises_happy_without_waking);
+    RUN(test_sleeping_other_actions_are_rejected);
+    RUN(test_kana_glyph_all_defined);
+    RUN(test_kana_glyph_all_distinct);
+    RUN(test_kana_glyph_matches_misaki_a);
+    RUN(test_kana_glyph_out_of_range_is_blank);
+    RUN(test_menu_labels_are_hiragana);
+    RUN(test_menu_label_polish_for_wild);
+    RUN(test_menu_labels_not_empty_and_bounded);
 
     std::printf("\n=== all tests passed ===\n\n");
     return 0;
