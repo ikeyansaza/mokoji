@@ -413,7 +413,25 @@ void Game::updateMini() {
     if (_screen != Screen::MINIGAME) return;
     _jump.step(_now_ms);
     uint8_t ev = _jump.consumeEvents();
+    if (ev) playMiniSounds(ev);
     if (ev & JumpGame::EV_MISS) applyMiniReward();   // MISS は JumpGame が 1 回だけ出す
+}
+
+void Game::playMiniSounds(uint8_t ev) {
+    if (!_sound) return;
+    // 同じ tick に複数出たら、優先度の高い 1 つだけ鳴らす（ブザーは 1 音しか出せない）。
+    if (ev & JumpGame::EV_MISS) {
+        _sound->blip(196, 350, _now_ms);
+    } else if (ev & JumpGame::EV_CLEARED) {
+        // スコア 5 ごとに音程を上げる（最大 6 段）
+        _sound->blip(784 + 110 * std::min(_jump.score() / 5, 6), 70, _now_ms);
+    } else if (ev & JumpGame::EV_JUMP) {
+        _sound->blip(660, 40, _now_ms);
+    } else if (ev & JumpGame::EV_COUNT) {
+        _sound->blip(440, 80, _now_ms);
+    } else if (ev & JumpGame::EV_BEAT) {
+        _sound->blip(180, 15, _now_ms);          // 押しどきの合図（小さく低い「コッ」）
+    }
 }
 
 // スコアに応じて幸福度が上がり、運動でお腹が減る。ミニゲームだけで餓死しないよう空腹は 1 で止める。

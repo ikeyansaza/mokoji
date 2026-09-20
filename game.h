@@ -110,6 +110,7 @@ private:
     uint32_t   _now_ms        = 0;
     int        _mini_reward   = 0;
     void       applyMiniReward();
+    void       playMiniSounds(uint8_t ev);
     char       _name[8];                  // romaji 表示用
     uint8_t    _name_kana[5];             // ひらがな index 列（kana::END 終端、最大 4 字）
     Stage      _stage;

@@ -18,11 +18,7 @@ Sound::Sound(uint pin) : _pin(pin), _duty(2000) {
     pwm_set_enabled(_slice, false);
 }
 
-void Sound::beep(int freq_hz, int dur_ms) {
-    if (freq_hz <= 0) {
-        sleep_ms(dur_ms);
-        return;
-    }
+void Sound::startTone(int freq_hz) {
     uint32_t sysclk = clock_get_hz(clk_sys);
     uint32_t wrap   = uint32_t(float(sysclk) / kClkDiv / float(freq_hz)) - 1;
     if (wrap > 65535) wrap = 65535;
@@ -31,9 +27,36 @@ void Sound::beep(int freq_hz, int dur_ms) {
     uint32_t lvl = (uint32_t(_duty) * wrap) / 65535;
     pwm_set_chan_level(_slice, _channel, lvl);
     pwm_set_enabled(_slice, true);
-    sleep_ms(dur_ms);
+}
+
+void Sound::stopTone() {
     pwm_set_chan_level(_slice, _channel, 0);
     pwm_set_enabled(_slice, false);
+}
+
+void Sound::beep(int freq_hz, int dur_ms) {
+    if (freq_hz <= 0) {
+        sleep_ms(dur_ms);
+        return;
+    }
+    startTone(freq_hz);
+    sleep_ms(dur_ms);
+    stopTone();
+}
+
+void Sound::blip(int freq_hz, int dur_ms, uint32_t now_ms) {
+    if (freq_hz <= 0) return;
+    startTone(freq_hz);          // 鳴っている最中なら、新しい音に置き換わる
+    _blip_on      = true;
+    _blip_stop_ms = now_ms + uint32_t(dur_ms);
+}
+
+void Sound::update(uint32_t now_ms) {
+    // 一周（約 49 日）をまたいでも比較できるよう、符号付きの差で見る
+    if (_blip_on && int32_t(now_ms - _blip_stop_ms) >= 0) {
+        stopTone();
+        _blip_on = false;
+    }
 }
 
 void Sound::mee() {
