@@ -28,6 +28,7 @@ private:
     bool     _blip_on      = false;
     uint32_t _blip_stop_ms = 0;
 
+    void noise(int dur_ms, int lo_hz, int hi_hz);   // 周波数をランダムに飛ばしたザラザラ音（待つ）
     void startTone(int freq_hz);   // PWM を周波数 freq_hz で鳴らし始める（待たない）
     void stopTone();
     void beep(int freq_hz, int dur_ms);

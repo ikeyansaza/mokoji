@@ -3,6 +3,7 @@
 #include "hardware/gpio.h"
 #include "hardware/clocks.h"
 #include "pico/time.h"
+#include "pico/rand.h"
 
 namespace {
 // PWM 分周をある程度大きく取り、低中音域 (~100Hz–2kHz) を全部 wrap 65535 以下で扱えるようにする。
@@ -68,20 +69,36 @@ void Sound::mee() {
 }
 
 void Sound::mog() {
-    // 300→350→300 で「もぐもぐ」感を出す音階変化
-    beep(300, 50);
-    sleep_ms(30);
-    beep(350, 50);
-    sleep_ms(30);
-    beep(300, 50);
+    // 「もぐもぐ」：交互に跳ねるリズムで、最後に一番高い音で終わる。
+    // 以前の 300→350→300Hz は、低くてブザーの濁った音になる上に、下がって終わる形が
+    // 「失敗・エラー」に聞こえた。ここでは上がって終わる形（happy() と同じ向き）にする。
+    const int freqs[] = {523, 659, 523, 659, 784};
+    for (int f : freqs) {
+        beep(f, 40);
+        sleep_ms(20);
+    }
+}
+
+// パッシブブザーは単音の矩形波しか出せないので、周波数を 2ms ごとにランダムに飛ばして
+// ノイズのようなザラザラした音を作る。ブザーは 2kHz 以上で共鳴して耳障りになるので、1kHz 前後に抑える。
+void Sound::noise(int dur_ms, int lo_hz, int hi_hz) {
+    for (int t = 0; t < dur_ms; t += 2) {
+        startTone(lo_hz + int(get_rand_32() % uint32_t(hi_hz - lo_hz)));
+        sleep_ms(2);
+    }
+    stopTone();
 }
 
 void Sound::joki() {
-    const int freqs[] = {600, 500, 600, 500};
-    for (int f : freqs) {
-        beep(f, 60);
-        sleep_ms(20);
-    }
+    // 「ジョキ、ジョキ、ジョキッ」：刃が閉じる音（ノイズの短いバースト）を間を空けて繰り返す。
+    // 最後だけ少し長く、低めの帯域にして「ジョキッ」と刈り切った感じにする。
+    noise(60, 1000, 1900);
+    sleep_ms(90);
+    noise(60, 900, 1800);
+    sleep_ms(90);
+    noise(60, 1000, 1900);
+    sleep_ms(90);
+    noise(110, 600, 1400);
 }
 
 void Sound::happy() {

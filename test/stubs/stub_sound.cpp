@@ -14,3 +14,4 @@ void Sound::startTone(int) {}
 void Sound::stopTone() {}
 void Sound::blip(int, int, uint32_t) {}
 void Sound::update(uint32_t) {}
+void Sound::noise(int, int, int) {}
