@@ -1,4 +1,6 @@
 #include "font.h"
+#include "kana.h"
+#include "kana_font.h"
 
 namespace {
 
@@ -103,10 +105,19 @@ constexpr uint8_t kFont[95][5] = {
 };
 
 constexpr uint8_t kBlank[5] = {0, 0, 0, 0, 0};
+constexpr uint8_t kKanaBlank[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+
+// kana.cpp の index 体系とフォントテーブルの字数がずれたらビルドで気づけるようにする
+static_assert(KANA_FONT_COUNT == kana::COUNT, "kana_font.h is out of sync with kana.cpp; run kana_font_gen.py");
 
 }  // namespace
 
 const uint8_t* font::glyph(char c) {
     if (c < 0x20 || c > 0x7E) return kBlank;
     return kFont[c - 0x20];
+}
+
+const uint8_t* font::kanaGlyph(uint8_t index) {
+    if (index >= kana::COUNT) return kKanaBlank;
+    return kKanaFont[index];
 }

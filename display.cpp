@@ -1,6 +1,7 @@
 #include "display.h"
 #include "sprites.h"
 #include "kana.h"
+#include "font.h"
 #include "pico/rand.h"
 #include <cstdio>
 #include <cstring>
@@ -59,7 +60,7 @@ void Display::drawMain(const Game& g) {
         for (int i = hbars; i < 5; ++i)        status[p++] = '.';
         status[p] = '\0';
         _oled->drawText(status, 0, 0);
-        _oled->drawText(g.name(), 96, 0);
+        _oled->drawKana(g.nameKana(), 96, 0);
     }
 }
 
@@ -133,6 +134,13 @@ void Display::drawActionFx(const Game& g) {
     }
 }
 
+// kana index 列の字数（kana::END 終端、最大 kana::MAX_NAME）。
+static int kanaLen(const uint8_t* s) {
+    int n = 0;
+    while (n < kana::MAX_NAME && s[n] != kana::END) ++n;
+    return n;
+}
+
 void Display::drawMenu(const Game& g) {
     // 上段：ステータス（メニュー操作中なので常時表示で意思決定の材料に）
     int hbars = g.hunger() / 20;
@@ -144,18 +152,26 @@ void Display::drawMenu(const Game& g) {
     for (int i = hbars; i < 5; ++i)        status[p++] = '.';
     status[p] = '\0';
     _oled->drawText(status, 0, 0);
-    _oled->drawText(g.name(), 96, 0);
+    _oled->drawKana(g.nameKana(), 96, 0);
 
-    // 下段：メニュー項目（5 項目、画面幅 128 px に収める）
+    // 中段：選択中の項目だけを 2 倍のひらがなで中央に出す（16x16、余白を確保）。
+    // 左右の < > は「L/R で切り替えられる」合図、下のドットは 5 項目中の現在位置。
     int cursor = g.menuCursor();
-    constexpr int item_w = 25;
+    const uint8_t* label = g.menuLabel(cursor);
+    constexpr int scale = 2;
+    int width = kanaLen(label) * font::KANA_ADVANCE * scale;
+    _oled->drawKana(label, (SSD1306::W - width) / 2, 24, false, scale);
+    _oled->drawText("<", 12, 28);
+    _oled->drawText(">", SSD1306::W - 12 - font::CHAR_W, 28);
+
+    // 下段：ページドット。現在位置は 4x4 の塗り、それ以外は 2x2。
+    constexpr int dot_pitch = 10;
     for (int i = 0; i < Game::MENU_COUNT; ++i) {
-        int x = i * item_w;
+        int cx = SSD1306::W / 2 + (i - Game::MENU_COUNT / 2) * dot_pitch;
         if (i == cursor) {
-            _oled->fillRect(x, 52, item_w - 1, 12, true);
-            _oled->drawText(g.menuLabel(i), x + 1, 54, true);
+            _oled->fillRect(cx - 2, 52, 4, 4, true);
         } else {
-            _oled->drawText(g.menuLabel(i), x + 1, 54, false);
+            _oled->fillRect(cx - 1, 53, 2, 2, true);
         }
     }
 }
@@ -277,10 +293,17 @@ const uint8_t (*Display::selectSprite(const Game& g, Game::Face face))[3] {
 
 // =====================================================================
 // 命名画面：プリセット選択 / 手動入力
-// 注意：当面はかな名を romaji で render する（ASCII 5x7 フォントのみ実装）。
-// ひらがなフォントを後で実装したら、ここの drawText を hiragana 描画に
-// 差し替えれば良い。
+// 名前・入力中の文字は 8x8 ひらがな（美咲ゴシック）で描く。
+// 行ラベル（"ka-" 等）と操作ガイドは ASCII 5x7 のまま。
 // =====================================================================
+// 入力中の名前を「[もこ_]」の形で左上に描く。かなは 8x8、括弧とカーソルは 5x7 ASCII。
+void Display::drawNameInput(const uint8_t* buffer) {
+    _oled->drawText("[", 0, 0);
+    _oled->drawKana(buffer, 6, 0);
+    int x = 6 + kanaLen(buffer) * font::KANA_ADVANCE;
+    _oled->drawText("_]", x, 0);
+}
+
 void Display::drawNaming(const Game& g) {
     char buf[32];
     switch (g.namingMode()) {
@@ -307,12 +330,11 @@ void Display::drawNaming(const Game& g) {
         case Game::NamingMode::PRESET_PICK: {
             _oled->drawText("preset", 0, 0);
             int idx = g.namingCursor();
-            kana::toRomaji(kana::PRESETS[idx], buf, sizeof(buf));
             // 中央寄せで現在の preset 名を表示
-            int width = std::strlen(buf) * 6;
+            int width = kanaLen(kana::PRESETS[idx]) * font::KANA_ADVANCE;
             int x = (128 - width) / 2;
             if (x < 0) x = 0;
-            _oled->drawText(buf, x, 28);
+            _oled->drawKana(kana::PRESETS[idx], x, 28);
             std::snprintf(buf, sizeof(buf), "%d/%d", idx + 1, kana::PRESET_COUNT);
             _oled->drawText(buf, 0, 16);
             _oled->drawText("< L  R >  OK", 0, 56);
@@ -320,10 +342,7 @@ void Display::drawNaming(const Game& g) {
         }
         case Game::NamingMode::INPUT_ROW: {
             // 上段：現在の入力バッファ
-            char nbuf[16];
-            kana::toRomaji(g.inputBuffer(), nbuf, sizeof(nbuf));
-            std::snprintf(buf, sizeof(buf), "[%s_]", nbuf);
-            _oled->drawText(buf, 0, 0);
+            drawNameInput(g.inputBuffer());
             // 中段：行を選ぶ
             int cur = g.namingCursor();
             const int total = kana::ROW_COUNT + 2;   // + BS + OK
@@ -342,19 +361,15 @@ void Display::drawNaming(const Game& g) {
             break;
         }
         case Game::NamingMode::INPUT_CHAR: {
-            char nbuf[16];
-            kana::toRomaji(g.inputBuffer(), nbuf, sizeof(nbuf));
-            std::snprintf(buf, sizeof(buf), "[%s_]", nbuf);
-            _oled->drawText(buf, 0, 0);
+            drawNameInput(g.inputBuffer());
             const auto& row = kana::ROWS[g.inputRow()];
             int cur = g.namingCursor();
             uint8_t kanaIdx = uint8_t(row.start + cur);
-            const char* romaji = (kanaIdx < kana::COUNT) ? kana::TABLE[kanaIdx].romaji : "?";
-            int width = std::strlen(romaji) * 6;
+            const uint8_t selected[2] = { kanaIdx, kana::END };
+            int width = font::KANA_ADVANCE;
             int x = (128 - width) / 2;
-            if (x < 0) x = 0;
             _oled->fillRect(x - 2, 26, width + 4, 12, true);
-            _oled->drawText(romaji, x, 28, true);
+            _oled->drawKana(selected, x, 28, true);
             std::snprintf(buf, sizeof(buf), "%s row %d/%d", row.label, cur + 1, row.length);
             _oled->drawText(buf, 0, 44);
             _oled->drawText("< L  R >  OK", 0, 56);

@@ -41,7 +41,7 @@ public:
     static constexpr int  MENU_COUNT = 5;
     // 系統別に「CUT/POLI」が切り替わるため、メニュー項目とラベルは Game の状態を見て返す。
     Action      menuAction(int i) const;
-    const char* menuLabel(int i)  const;
+    const uint8_t* menuLabel(int i) const;   // kana index 列（kana::END 終端）
     static const char*    breedSlug(Breed b);        // 短縮表記（4-5 文字）
 
     // ゲーム内時間の刻み定数。DEBUG_FAST / HOST_TEST 時は短縮版に切り替わる。
