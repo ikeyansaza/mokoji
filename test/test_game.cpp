@@ -7,6 +7,7 @@
 #include "game.h"
 #include "font.h"
 #include "kana.h"
+#include "jump_game.h"
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>
@@ -491,6 +492,220 @@ static void test_naming_row_labels_are_renderable() {
     }
 }
 
+// ---- JumpGame ------------------------------------------------------------
+using JG = JumpGame;
+
+// from から ms 後まで dt 刻みで step する。
+static void jg_run(JG& j, uint32_t from, uint32_t ms, uint32_t dt) {
+    for (uint32_t e = dt; e <= ms; e += dt) j.step(from + e);
+}
+
+static void test_jump_countdown_then_play() {
+    JG j;
+    j.start(1000, 1);
+    assert(j.state() == JG::State::COUNTDOWN);
+    assert(j.countdownNumber() == 3);
+    assert(j.consumeEvents() & JG::EV_COUNT);              // 開始時の「3」
+    j.step(1000 + 999);
+    assert(j.countdownNumber() == 3);
+    j.step(1000 + 1000);
+    assert(j.countdownNumber() == 2);
+    assert(j.consumeEvents() & JG::EV_COUNT);
+    j.step(1000 + 2000);
+    assert(j.countdownNumber() == 1);
+    j.step(1000 + JG::COUNTDOWN_MS);
+    assert(j.state() == JG::State::PLAYING);
+    assert(j.countdownNumber() == 0);
+}
+
+static void test_jump_ignores_press_during_countdown() {
+    JG j;
+    j.start(0, 1);
+    j.consumeEvents();
+    j.onPress(500);
+    assert(!(j.consumeEvents() & JG::EV_JUMP));
+    j.step(JG::COUNTDOWN_MS);
+    j.onPress(JG::COUNTDOWN_MS + 5);                       // 開始直後は跳べる
+    assert(j.consumeEvents() & JG::EV_JUMP);
+}
+
+static void test_jump_air_time_and_height() {
+    JG j;
+    j.start(0, 1);
+    const uint32_t P = JG::COUNTDOWN_MS + 100;             // 最初の柵より十分前
+    j.step(P);
+    assert(j.sheepHeight() == 0);
+    j.onPress(P);
+    j.step(P + 5);
+    assert(j.sheepHeight() > 0);
+    j.step(P + JG::JUMP_AIR_MS / 2);
+    assert(j.sheepHeight() == JG::JUMP_HEIGHT_PX);         // 頂点
+    j.step(P + JG::JUMP_AIR_MS);
+    assert(j.sheepHeight() == 0);                          // 着地
+}
+
+static void test_jump_ignored_while_airborne() {
+    JG j;
+    j.start(0, 1);
+    const uint32_t P = JG::COUNTDOWN_MS + 100;
+    j.step(P);
+    j.consumeEvents();
+    j.onPress(P);
+    assert(j.consumeEvents() & JG::EV_JUMP);
+    j.onPress(P + 200);                                    // 滞空中
+    assert(!(j.consumeEvents() & JG::EV_JUMP));
+    j.onPress(P + JG::JUMP_AIR_MS + 5);                    // 着地後
+    assert(j.consumeEvents() & JG::EV_JUMP);
+}
+
+// 最初の拍（押しどき）の時刻。start(t0, ...) の t0 を渡す。
+static uint32_t jg_first_beat(uint32_t t0) { return t0 + JG::COUNTDOWN_MS + JG::FIRST_BEAT_MS; }
+
+// b1 に対して off ms ずらして押し、柵 1 本ぶんを通過させた結果を返す。
+static JG jg_press_offset(int off) {
+    JG j;
+    j.start(0, 1);
+    const uint32_t b1 = jg_first_beat(0);
+    jg_run(j, 0, b1 + uint32_t(off) - 5, 5);              // 押下の直前まで
+    j.onPress(b1 + uint32_t(off));
+    jg_run(j, b1 + uint32_t(off), 600, 5);                // 柵が通り過ぎるまで
+    return j;
+}
+
+static void test_fence_cleared_on_beat() {
+    JG j = jg_press_offset(0);
+    assert(j.state() == JG::State::PLAYING);
+    assert(j.score() == 1);
+}
+
+static void test_fence_hit_without_jump() {
+    JG j;
+    j.start(0, 1);
+    jg_run(j, 0, jg_first_beat(0) + 600, 5);
+    assert(j.state() == JG::State::OVER);
+    assert(j.score() == 0);
+    assert(j.consumeEvents() & JG::EV_MISS);
+}
+
+static void test_jump_window_edges() {
+    // 押しどきの窓は概算で ±100ms（JUMP_HEIGHT_PX=26 のとき）。内側は成功、外側は失敗。
+    const int inside[]  = { -80, -40, 0, 40, 80 };
+    const int outside[] = { -150, 150 };
+    for (int off : inside)  { JG j = jg_press_offset(off); assert(j.state() == JG::State::PLAYING); assert(j.score() == 1); }
+    for (int off : outside) { JG j = jg_press_offset(off); assert(j.state() == JG::State::OVER); }
+}
+
+static void test_bpm_progression_and_gap() {
+    assert(JG::bpmForScore(0) == JG::BPM_START);
+    assert(JG::bpmForScore(1) == JG::BPM_START + JG::BPM_STEP);
+    assert(JG::bpmForScore(1000) == JG::BPM_MAX);           // 上限で止まる
+    uint32_t prev = JG::beatMsForScore(0);
+    for (int s = 0; s <= 200; ++s) {
+        uint32_t b = JG::beatMsForScore(s);
+        assert(b <= prev);                                   // スコアが上がると速くなる（遅くならない）
+        assert(b >= JG::JUMP_AIR_MS + JG::MIN_GAP_MARGIN_MS);// 必ず跳び直せる
+        prev = b;
+    }
+}
+
+// 各柵の押しどきでぴったり押す bot。target 匹越えるまで進め、見つけた柵の拍を beats に記録する。
+static void jg_autoplay(JG& j, uint32_t t0, int target, uint32_t* beats, int* nbeats) {
+    uint32_t last_press_beat = 0;
+    bool pressed_any = false;
+    *nbeats = 0;
+    uint32_t seen[64]; int nseen = 0;
+    for (uint32_t t = t0 + 5; j.score() < target && j.state() != JG::State::OVER; t += 5) {
+        j.step(t);
+        for (int i = 0; i < JG::MAX_FENCES; ++i) {
+            const JG::Fence& f = j.fence(i);
+            if (!f.used) continue;
+            bool known = false;
+            for (int k = 0; k < nseen; ++k) if (seen[k] == f.beat_ms) known = true;
+            if (!known && nseen < 64) { seen[nseen++] = f.beat_ms; if (*nbeats < 64) beats[(*nbeats)++] = f.beat_ms; }
+            if (!f.cleared && int32_t(t - f.beat_ms) >= 0 && (!pressed_any || f.beat_ms != last_press_beat)) {
+                j.onPress(t);
+                last_press_beat = f.beat_ms;
+                pressed_any = true;
+            }
+        }
+    }
+}
+
+static void test_autoplay_reaches_high_score_with_valid_gaps() {
+    JG j;
+    j.start(0, 1);
+    uint32_t beats[64]; int n = 0;
+    jg_autoplay(j, 0, 40, beats, &n);
+    assert(j.state() == JG::State::PLAYING);
+    assert(j.score() >= 40);
+    assert(n >= 40);
+    for (int i = 1; i < n; ++i) {
+        uint32_t gap = beats[i] - beats[i - 1];
+        assert(gap >= JG::beatMsForScore(1000));             // 最短でも上限 BPM の 1 拍
+        assert(gap <= 2 * JG::beatMsForScore(0));            // 最長でも開始 BPM の 2 拍
+    }
+}
+
+static void test_same_seed_same_fences() {
+    uint32_t a[64], b[64], c[64]; int na = 0, nb = 0, nc = 0;
+    JG j1; j1.start(0, 7);  jg_autoplay(j1, 0, 30, a, &na);
+    JG j2; j2.start(0, 7);  jg_autoplay(j2, 0, 30, b, &nb);
+    JG j3; j3.start(0, 99); jg_autoplay(j3, 0, 30, c, &nc);
+    assert(na == nb && std::memcmp(a, b, sizeof(uint32_t) * na) == 0);   // 同じシードは同じ並び
+    assert(!(na == nc && std::memcmp(a, c, sizeof(uint32_t) * na) == 0));// 違うシードは違う並び
+}
+
+// 先頭の柵を押しどきで越え、2 本目は押さずにミスするスクリプトを、刻み dt / 開始時刻 t0 で実行する。
+static JG jg_script(uint32_t t0, uint32_t dt) {
+    JG j;
+    j.start(t0, 3);
+    const uint32_t b1 = jg_first_beat(t0);
+    bool pressed = false;
+    for (uint32_t t = t0 + dt; int32_t(t0 + 20000 - t) > 0 && j.state() != JG::State::OVER; t += dt) {
+        if (!pressed && int32_t(b1 - t) <= int32_t(dt)) { j.onPress(b1); pressed = true; }
+        j.step(t);
+    }
+    return j;
+}
+
+static void test_step_granularity_independent() {
+    JG a = jg_script(0, 5), b = jg_script(0, 33), c = jg_script(0, 1);
+    assert(a.state() == JG::State::OVER && b.state() == JG::State::OVER && c.state() == JG::State::OVER);
+    assert(a.score() == 1 && b.score() == 1 && c.score() == 1);
+    assert(a.overSinceMs() == b.overSinceMs() && a.overSinceMs() == c.overSinceMs());
+}
+
+static void test_time_wraparound() {
+    JG base = jg_script(0, 5);
+    JG wrap = jg_script(0xFFFFFF00u, 5);       // 開始直後に uint32_t が一周する
+    assert(wrap.state() == JG::State::OVER);
+    assert(wrap.score() == base.score());
+    assert(wrap.overSinceMs() - 0xFFFFFF00u == base.overSinceMs());
+}
+
+static void test_events_emitted_once() {
+    JG j;
+    j.start(0, 1);
+    int counts = 0, beats = 0, jumps = 0, cleared = 0, miss = 0;
+    auto drain = [&]() {
+        uint8_t e = j.consumeEvents();
+        counts += !!(e & JG::EV_COUNT); beats += !!(e & JG::EV_BEAT);
+        jumps += !!(e & JG::EV_JUMP);   cleared += !!(e & JG::EV_CLEARED); miss += !!(e & JG::EV_MISS);
+    };
+    drain();                                                     // 開始時の「3」
+    const uint32_t b1 = jg_first_beat(0);
+    for (uint32_t t = 5; t <= b1 + 600; t += 5) {
+        if (t == b1) j.onPress(t);
+        j.step(t);
+        drain();
+    }
+    assert(counts == 3);        // 3・2・1
+    assert(jumps == 1);
+    assert(cleared == 1);
+    assert(beats >= 1);
+    assert(miss == 0);
+}
+
 int main() {
     std::setbuf(stdout, nullptr);
     std::srand(42);   // 進化判定の再現性のため固定シード
@@ -528,6 +743,19 @@ int main() {
     RUN(test_ja_glyph_unsupported_is_null);
     RUN(test_text_width_mixed);
     RUN(test_naming_row_labels_are_renderable);
+    RUN(test_jump_countdown_then_play);
+    RUN(test_jump_ignores_press_during_countdown);
+    RUN(test_jump_air_time_and_height);
+    RUN(test_jump_ignored_while_airborne);
+    RUN(test_fence_cleared_on_beat);
+    RUN(test_fence_hit_without_jump);
+    RUN(test_jump_window_edges);
+    RUN(test_bpm_progression_and_gap);
+    RUN(test_autoplay_reaches_high_score_with_valid_gaps);
+    RUN(test_same_seed_same_fences);
+    RUN(test_step_granularity_independent);
+    RUN(test_time_wraparound);
+    RUN(test_events_emitted_once);
 
     std::printf("\n=== all tests passed ===\n\n");
     return 0;
