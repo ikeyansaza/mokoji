@@ -21,6 +21,7 @@ void Display::draw(const Game& g) {
         case Game::Screen::MENU:   drawMenu(g);   break;
         case Game::Screen::GRAVE:  drawGrave(g);  break;
         case Game::Screen::NAMING: drawNaming(g); break;
+        case Game::Screen::MINIGAME: break;   // 仮置き（次のタスクで描画を実装）
     }
 }
 

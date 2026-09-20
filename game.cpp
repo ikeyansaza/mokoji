@@ -13,6 +13,9 @@ constexpr int      WALK_LEFT      = 0;
 constexpr int      WALK_RIGHT     = 80;   // 128 - 48 = 80（右端余白ゼロ）
 constexpr int      DECAY_HOURS    = 3;                   // 空腹/幸福の減少間隔（game-hour）
 constexpr int      SLEEP_PET_HAPPY = 10;                  // 就寝中に撫でた時の幸福度増分（起床時 PET は +20）
+constexpr int      MINI_REWARD_MAX       = 30;   // ミニゲーム 1 回で上がる幸福度の上限
+constexpr int      MINI_REWARD_PER_SHEEP = 2;    // 柵を 1 つ越えるごとの幸福度
+constexpr int      MINI_HUNGER_COST      = 5;    // 運動でお腹が減る量
 constexpr int      START_HOUR     = 8;                   // 起動時のゲーム内時刻（朝 8 時）→ 即就寝を防ぐ
 constexpr int      LIFESPAN_MIN   = 10;                  // 自然死 寿命下限（リアル日）
 constexpr int      LIFESPAN_RANGE = 6;                   // [10, 15] のレンジ
@@ -203,6 +206,8 @@ void Game::tick() {
     }
 
     if (!_sleeping && _sleepy >= 80) _sleeping = true;
+    // 就寝中は操作できないので、遊んでいたミニゲームは中断する（結果は反映しない）
+    if (_sleeping && _screen == Screen::MINIGAME) _screen = Screen::MAIN;
     if (_sleeping  && _sleepy <= 10) _sleeping = false;
 
     // 自然死（寿命到達）と care-based 死亡（hunger/happy 限界）
@@ -319,8 +324,18 @@ void Game::onButton(Button btn) {
             } else if (btn == Button::RIGHT) {
                 _menu_cursor = (_menu_cursor + 1) % MENU_COUNT;
             } else if (btn == Button::CENTER) {
+                _screen = Screen::MAIN;              // doAction が画面を変える（ミニゲーム）ことがあるので先に戻す
                 doAction(menuAction(_menu_cursor));
-                _screen = Screen::MAIN;
+            }
+            break;
+        case Screen::MINIGAME:
+            if (_jump.state() == JumpGame::State::OVER) {
+                // 終了直後は連打で誤って閉じないよう、OVER_LOCK_MS はボタンを無視する
+                if (uint32_t(_now_ms - _jump.overSinceMs()) >= JumpGame::OVER_LOCK_MS) {
+                    _screen = Screen::MAIN;
+                }
+            } else {
+                _jump.onPress(_now_ms);
             }
             break;
         case Screen::GRAVE:
@@ -383,16 +398,31 @@ void Game::doAction(Action act) {
             }
             break;
         case Action::MINI:
-            // ミニゲーム未実装。仮で happy +5 とハッピー音
-            _happy = std::min(100, _happy + 5);
-            _action = Action::MINI;
-            _dirty = true;
-            if (_sound) _sound->happy();
+            // 柵を跳ぶミニゲーム。結果は MISS の時点で 1 回だけ反映する（applyMiniReward）。
+            _jump.start(_now_ms, get_rand_32());
+            _mini_reward   = 0;
+            _screen        = Screen::MINIGAME;
             break;
         default:
             break;
     }
     _walk_tick = 0;
+}
+
+void Game::updateMini() {
+    if (_screen != Screen::MINIGAME) return;
+    _jump.step(_now_ms);
+    uint8_t ev = _jump.consumeEvents();
+    if (ev & JumpGame::EV_MISS) applyMiniReward();   // MISS は JumpGame が 1 回だけ出す
+}
+
+// スコアに応じて幸福度が上がり、運動でお腹が減る。ミニゲームだけで餓死しないよう空腹は 1 で止める。
+// 進化の傾向スコア（tend_*）には反映しない。
+void Game::applyMiniReward() {
+    _mini_reward   = std::min(MINI_REWARD_MAX, _jump.score() * MINI_REWARD_PER_SHEEP);
+    _happy         = std::min(100, _happy + _mini_reward);
+    if (_hunger > 1) _hunger = std::max(1, _hunger - MINI_HUNGER_COST);
+    _dirty = true;
 }
 
 void Game::evolveYoung() {

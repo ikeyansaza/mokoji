@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include "save.h"
+#include "jump_game.h"
 
 class Sound;
 
@@ -27,7 +28,7 @@ public:
     };
     // 系統（Stage / Breed から導出可能）
     enum class Family : uint8_t { NONE, MOKO, SUFFOLK, WILD };
-    enum class Screen     : uint8_t { MAIN, MENU, GRAVE, NAMING };
+    enum class Screen     : uint8_t { MAIN, MENU, GRAVE, NAMING, MINIGAME };
     enum class Face       : uint8_t { LEFT, FRONT, RIGHT };
     enum class Action     : uint8_t { NONE, FEED, PET, SHEAR, POLISH, MINI };
     enum class Button     : uint8_t { LEFT, CENTER, RIGHT, LEFT_LONG };
@@ -94,9 +95,21 @@ public:
     // Flash 寿命対策：状態が変わったときだけ true。main 側で saved 後に clearDirty()。
     // age_ticks 単独の進行は dirty を立てない（main 側の長周期 force-save が拾う）。
     bool      isDirty()     const { return _dirty; }
+
+    // ミニゲーム「柵を跳ぶ羊」。main.cpp が現在時刻（ms）を渡し、ミニゲーム中は短い周期で
+    // updateMini() を呼ぶ。ゲームの進行は JumpGame が持ち、Game は結果（幸福度・空腹）を反映する。
+    void setNowMs(uint32_t now_ms) { _now_ms = now_ms; }
+    void updateMini();
+    bool inMiniGame() const { return _screen == Screen::MINIGAME; }
+    const JumpGame& jump() const { return _jump; }
+    int  miniReward() const { return _mini_reward; }   // 直近のゲームで上がった幸福度（表示用）
     void      clearDirty()        { _dirty = false; }
 
 private:
+    JumpGame   _jump;
+    uint32_t   _now_ms        = 0;
+    int        _mini_reward   = 0;
+    void       applyMiniReward();
     char       _name[8];                  // romaji 表示用
     uint8_t    _name_kana[5];             // ひらがな index 列（kana::END 終端、最大 4 字）
     Stage      _stage;

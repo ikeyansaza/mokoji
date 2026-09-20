@@ -706,6 +706,119 @@ static void test_events_emitted_once() {
     assert(miss == 0);
 }
 
+// ---- Game とミニゲームの結合 ----------------------------------------------
+// now を進めながら Game 越しにミニゲームを操作する補助。
+static uint32_t mini_now = 0;
+
+static void mini_step(Game& g, uint32_t ms) {
+    for (uint32_t e = 0; e < ms; e += 5) { mini_now += 5; g.setNowMs(mini_now); g.updateMini(); }
+}
+
+// clear_target 匹越えたあとは押すのをやめ、ゲームオーバーになるまで進める。
+static void mini_play(Game& g, int clear_target) {
+    uint32_t last_beat = 0; bool any = false;
+    for (int guard = 0; guard < 20000 && g.jump().state() != JumpGame::State::OVER; ++guard) {
+        mini_step(g, 5);
+        if (g.jump().score() >= clear_target) continue;
+        for (int i = 0; i < JumpGame::MAX_FENCES; ++i) {
+            const JumpGame::Fence& f = g.jump().fence(i);
+            if (f.used && !f.cleared && int32_t(mini_now - f.beat_ms) >= 0 && (!any || f.beat_ms != last_beat)) {
+                g.onButton(Game::Button::CENTER);
+                last_beat = f.beat_ms; any = true;
+            }
+        }
+    }
+}
+
+// 空腹・幸福を指定した通常の Game を作る。
+static Game make_game_with(int hunger, int happy) {
+    Game base(nullptr);
+    skip_naming(base);
+    GameSaveData d = base.saveData();
+    d.hunger = uint8_t(hunger);
+    d.happy  = uint8_t(happy);
+    return Game(nullptr, &d);
+}
+
+static void test_minigame_starts_from_menu() {
+    Game g = make_game_with(50, 50);
+    mini_now = 100000; g.setNowMs(mini_now);
+    menu_select(g, Game::Action::MINI);
+    assert(g.screen() == Game::Screen::MINIGAME);
+    assert(g.inMiniGame());
+    assert(g.jump().state() == JumpGame::State::COUNTDOWN);
+    assert(g.happy() == 50);                       // 仮の幸福度 +5 は無くなった
+}
+
+static void test_minigame_reward_and_hunger_cost() {
+    Game g = make_game_with(50, 50);
+    GameSaveData before = g.saveData();
+    mini_now = 100000; g.setNowMs(mini_now);
+    menu_select(g, Game::Action::MINI);
+    mini_play(g, 3);
+    assert(g.jump().state() == JumpGame::State::OVER);
+    assert(g.jump().score() == 3);
+    assert(g.happy() == 50 + 3 * 2);
+    assert(g.hunger() == 50 - 5);
+    assert(g.miniReward() == 6);
+    GameSaveData after = g.saveData();
+    assert(after.tend_feed == before.tend_feed && after.tend_pet == before.tend_pet);
+    assert(after.tend_shear == before.tend_shear && after.tend_polish == before.tend_polish);
+    assert(g.isDirty());
+}
+
+static void test_minigame_reward_capped_and_applied_once() {
+    Game g = make_game_with(50, 50);
+    mini_now = 100000; g.setNowMs(mini_now);
+    menu_select(g, Game::Action::MINI);
+    mini_play(g, 20);                              // 2×20 = 40 → 上限 30
+    assert(g.happy() == 80);
+    int happy = g.happy(), hunger = g.hunger();
+    mini_step(g, 2000);                            // その後 updateMini を続けても再反映されない
+    assert(g.happy() == happy && g.hunger() == hunger);
+}
+
+static void test_minigame_hunger_floor() {
+    Game g = make_game_with(3, 50);
+    mini_now = 100000; g.setNowMs(mini_now);
+    menu_select(g, Game::Action::MINI);
+    mini_play(g, 0);
+    assert(g.hunger() == 1);                       // 餓死させない
+    Game h = make_game_with(1, 50);
+    mini_now = 100000; h.setNowMs(mini_now);
+    menu_select(h, Game::Action::MINI);
+    mini_play(h, 0);
+    assert(h.hunger() == 1);                       // 1 を下回らず、増えもしない
+}
+
+static void test_minigame_returns_to_main_after_lock() {
+    Game g = make_game_with(50, 50);
+    mini_now = 100000; g.setNowMs(mini_now);
+    menu_select(g, Game::Action::MINI);
+    mini_play(g, 0);
+    g.onButton(Game::Button::CENTER);              // 終了直後：ロック中
+    assert(g.screen() == Game::Screen::MINIGAME);
+    mini_step(g, JumpGame::OVER_LOCK_MS);
+    g.onButton(Game::Button::CENTER);
+    assert(g.screen() == Game::Screen::MAIN);
+}
+
+static void test_minigame_aborted_when_falling_asleep() {
+    Game base(nullptr);
+    skip_naming(base);
+    GameSaveData d = base.saveData();
+    d.sleepy = 80; d.sleeping = 0; d.hunger = 50; d.happy = 50;
+    Game g(nullptr, &d);
+    mini_now = 100000; g.setNowMs(mini_now);
+    menu_select(g, Game::Action::MINI);
+    assert(g.screen() == Game::Screen::MINIGAME);
+    g.tick();                                      // 睡眠度 80 以上で就寝する
+    assert(g.sleeping());
+    assert(g.screen() == Game::Screen::MAIN);      // ミニゲームは中断
+    mini_step(g, 10000);                           // 中断後は結果が反映されない
+    assert(g.happy() == 50 && g.hunger() == 50);
+}
+
 int main() {
     std::setbuf(stdout, nullptr);
     std::srand(42);   // 進化判定の再現性のため固定シード
@@ -756,6 +869,12 @@ int main() {
     RUN(test_step_granularity_independent);
     RUN(test_time_wraparound);
     RUN(test_events_emitted_once);
+    RUN(test_minigame_starts_from_menu);
+    RUN(test_minigame_reward_and_hunger_cost);
+    RUN(test_minigame_reward_capped_and_applied_once);
+    RUN(test_minigame_hunger_floor);
+    RUN(test_minigame_returns_to_main_after_lock);
+    RUN(test_minigame_aborted_when_falling_asleep);
 
     std::printf("\n=== all tests passed ===\n\n");
     return 0;
