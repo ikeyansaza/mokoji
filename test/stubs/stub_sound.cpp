@@ -5,6 +5,7 @@
 Sound::Sound(uint pin) : _pin(pin), _slice(0), _channel(0), _duty(0) {}
 
 void Sound::mee()    {}
+void Sound::pet()    {}
 void Sound::mog()    {}
 void Sound::joki()   {}
 void Sound::happy()  {}
@@ -15,3 +16,5 @@ void Sound::stopTone() {}
 void Sound::blip(int, int, uint32_t) {}
 void Sound::update(uint32_t) {}
 void Sound::noise(int, int, int) {}
+void Sound::glide(int, int, int) {}
+void Sound::warble(int, int, int, int) {}

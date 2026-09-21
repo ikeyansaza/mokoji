@@ -60,12 +60,43 @@ void Sound::update(uint32_t now_ms) {
     }
 }
 
+void Sound::glide(int from_hz, int to_hz, int dur_ms) {
+    constexpr int STEP_MS = 4;
+    for (int t = 0; t < dur_ms; t += STEP_MS) {
+        startTone(from_hz + (to_hz - from_hz) * t / dur_ms);
+        sleep_ms(STEP_MS);
+    }
+}
+
+void Sound::warble(int center_hz, int depth_hz, int rate_hz, int dur_ms) {
+    constexpr int STEP_MS = 4;
+    for (int t = 0; t < dur_ms; t += STEP_MS) {
+        // 三角波で -1000..+1000 を往復する（周期 = 1000 / rate_hz ms）
+        int q   = (t * rate_hz) % 1000;
+        int tri = (q < 500) ? (4 * q - 1000) : (3000 - 4 * q);
+        startTone(center_hz + depth_hz * tri / 1000);
+        sleep_ms(STEP_MS);
+    }
+}
+
 void Sound::mee() {
-    beep(440, 80);
-    sleep_ms(20);
-    beep(494, 120);
-    sleep_ms(20);
-    beep(440, 200);
+    // 「メェ〜」：羊の鳴き声らしさは、音の細かい揺れ（震え）。
+    // 以前の 440→494→440Hz は、低くてブザーの濁った音になる上に、最後に元へ戻ってしぼむ形が
+    // 失敗音に聞こえた。ここでは 600Hz 前後で、震わせて、最後は持ち上げて終わる（かわいがられて嬉しい感じ）。
+    // なお、速く深い震え（毎秒 24 回・±70Hz）とざらつき（途切れ）を付けたら、実機で聞いて悪くなったので
+    // 穏やかな震え（毎秒 9 回・±45Hz）に戻した。
+    glide(520, 640, 70);        // 「メ」：低めから立ち上がる
+    warble(640, 45, 9, 240);    // 「ェ〜」：震わせながら伸ばす
+    glide(640, 720, 60);        // 最後は少し持ち上げる
+    stopTone();
+}
+
+void Sound::pet() {
+    // 撫でる音はほんの一瞬の「ポッ」。鳴き声（520〜720Hz）と続けて 1 つの音に聞こえないよう、
+    // 高めの音（1000Hz）にして、はっきり間を置いてから、羊が鳴いて応える。
+    beep(1000, 25);
+    sleep_ms(180);
+    mee();
 }
 
 void Sound::mog() {
