@@ -8,6 +8,7 @@
 #include "font.h"
 #include "kana.h"
 #include "jump_game.h"
+#include "background.h"
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>
@@ -1065,6 +1066,174 @@ static void test_evolution_sound_is_deferred() {
     assert(g.pendingSfx() == Game::Sfx::HAPPY);
 }
 
+// ---- 昼夜（ゲーム内の時刻）-------------------------------------------------
+static void tick_hours(Game& g, uint32_t hours) {
+    for (uint32_t i = 0; i < hours * Game::TICKS_PER_HOUR; ++i) g.tick();
+}
+
+static void test_hour_of_day_and_night() {
+    // 起動時は朝 8 時（起動直後に就寝しないため）。22 時〜6 時が夜。
+    Game g(nullptr);
+    skip_naming(g);
+    assert(g.hourOfDay() == 8);
+    assert(!g.isNight());
+    tick_hours(g, 13);                 // 21 時
+    assert(g.hourOfDay() == 21);
+    assert(!g.isNight());
+    tick_hours(g, 1);                  // 22 時：夜の始まり
+    assert(g.hourOfDay() == 22);
+    assert(g.isNight());
+    tick_hours(g, 2);                  // 0 時（日をまたぐ）
+    assert(g.hourOfDay() == 0);
+    assert(g.isNight());
+    tick_hours(g, 5);                  // 5 時：まだ夜
+    assert(g.hourOfDay() == 5);
+    assert(g.isNight());
+    tick_hours(g, 1);                  // 6 時：夜明け
+    assert(g.hourOfDay() == 6);
+    assert(!g.isNight());
+}
+
+// ---- 背景（草・月・星）-----------------------------------------------------
+static void test_grass_stays_in_the_ground_strip() {
+    // 草は地面の帯（GRASS_TOP 以降）だけ。羊の足元（y<=53）に食い込まない。
+    int lit_above = 0, lit_in = 0;
+    for (int y = 0; y < background::H; ++y) {
+        for (int x = 0; x < background::W; ++x) {
+            if (!background::grassPixel(x, y)) continue;
+            if (y < background::GRASS_TOP) ++lit_above; else ++lit_in;
+        }
+    }
+    assert(lit_above == 0);
+    assert(lit_in > 0);
+}
+
+static void test_grass_density_is_moderate() {
+    // 空でも塗りつぶしでもない、適度な密度（帯の面積の 15%〜60%）
+    int lit = 0;
+    const int area = background::W * (background::H - background::GRASS_TOP);
+    for (int y = background::GRASS_TOP; y < background::H; ++y)
+        for (int x = 0; x < background::W; ++x)
+            if (background::grassPixel(x, y)) ++lit;
+    assert(lit * 100 >= area * 15);
+    assert(lit * 100 <= area * 60);
+}
+
+static void test_grass_has_no_bare_gaps() {
+    // 16px の幅ごとに、地面の線より上に草の葉がある（どこかが丸ごとはげていない）
+    for (int x0 = 0; x0 < background::W; x0 += 16) {
+        int blades = 0;
+        for (int x = x0; x < x0 + 16; ++x)
+            for (int y = background::GRASS_TOP; y < background::H - 1; ++y)
+                if (background::grassPixel(x, y)) ++blades;
+        assert(blades > 0);
+    }
+}
+
+static void test_grass_ground_line_is_dotted() {
+    // 一番下の行は点線（半分以上が点いていて、全部ではない）
+    int lit = 0;
+    for (int x = 0; x < background::W; ++x)
+        if (background::grassPixel(x, background::H - 1)) ++lit;
+    assert(lit > background::W / 2);
+    assert(lit < background::W);
+}
+
+static void test_sky_stays_in_the_sky_strip() {
+    int moon = 0;
+    for (int y = 0; y < background::H; ++y) {
+        for (int x = 0; x < background::W; ++x) {
+            if (background::moonPixel(x, y)) {
+                ++moon;
+                assert(y <= background::SKY_BOTTOM);
+            }
+            for (int frame = 0; frame < 2; ++frame) {
+                if (background::starPixel(x, y, frame)) {
+                    assert(y <= background::SKY_BOTTOM);
+                    // 就寝画面の左上の「zzz」（x<18, y<7）に重ならない
+                    assert(!(x < 20 && y < 9));
+                }
+            }
+        }
+    }
+    assert(moon >= 20);                                  // 月として形になっている
+}
+
+static void test_stars_twinkle_but_never_vanish() {
+    // 2 つの画面（フレーム）で、またたく星の形（十字）は入れ替わるが、星の中心は消えない
+    int differ = 0;
+    for (int y = 0; y < background::H; ++y)
+        for (int x = 0; x < background::W; ++x)
+            if (background::starPixel(x, y, 0) != background::starPixel(x, y, 1)) ++differ;
+    assert(differ > 0);
+    for (int i = 0; i < background::STAR_COUNT; ++i) {
+        int sx = background::STARS[i][0], sy = background::STARS[i][1];
+        assert(background::starPixel(sx, sy, 0));
+        assert(background::starPixel(sx, sy, 1));
+    }
+}
+
+// ---- 昼の空（太陽・雲）-----------------------------------------------------
+static void test_sun_is_fixed_in_the_sky() {
+    // 太陽は動かさない。左上に固定し、焼き付き対策のゆっくりした揺れ（±2px）を足しても、
+    // 画面と空の帯に収まる。月（右上）とは重ならない。
+    constexpr int DRIFT = 2;
+    assert(background::SUN_X - DRIFT >= 0);
+    assert(background::SUN_X + background::SUN_W + DRIFT <= background::W);
+    assert(background::SUN_Y >= 0);
+    assert(background::SUN_Y + background::SUN_H - 1 <= background::SKY_BOTTOM);
+    assert(background::SUN_X + background::SUN_W + DRIFT < background::MOON_X);
+}
+
+static int count_sun() {
+    int n = 0;
+    for (int y = 0; y < background::H; ++y)
+        for (int x = 0; x < background::W; ++x)
+            if (background::sunPixel(x, y)) ++n;
+    return n;
+}
+
+static void test_sun_shape_and_steady() {
+    // 太陽の外は点かない
+    for (int y = 0; y < background::H; ++y) {
+        for (int x = 0; x < background::W; ++x) {
+            bool inside = x >= background::SUN_X && x < background::SUN_X + background::SUN_W &&
+                          y >= background::SUN_Y && y < background::SUN_Y + background::SUN_H;
+            if (!inside) assert(!background::sunPixel(x, y));
+        }
+    }
+    // 円盤と 8 方向の光線がいつも点いている（点滅しない）。斜めの光線の位置も点く。
+    assert(count_sun() >= 25);
+    for (int i = 0; i < 4; ++i) {
+        int dx = (i & 1) ? 7 : 1, dy = (i & 2) ? 7 : 1;
+        assert(background::sunPixel(background::SUN_X + dx, background::SUN_Y + dy));
+    }
+}
+
+static void test_clouds_stay_in_sky_and_drift() {
+    int lit_total = 0;
+    for (int tick = 0; tick <= 20000; tick += 500) {
+        for (int y = 0; y < background::H; ++y) {
+            for (int x = 0; x < background::W; ++x) {
+                if (!background::cloudPixel(x, y, tick)) continue;
+                ++lit_total;
+                assert(y <= background::SKY_BOTTOM);
+            }
+        }
+    }
+    assert(lit_total > 0);
+    // 時間がたつと、2 つの雲がそれぞれ動く（上の帯 y=0〜8 の雲と、下の帯 y=9〜17 の雲を別々に見る）
+    int differ_upper = 0, differ_lower = 0;
+    for (int y = 0; y <= background::SKY_BOTTOM; ++y) {
+        for (int x = 0; x < background::W; ++x) {
+            if (background::cloudPixel(x, y, 0) == background::cloudPixel(x, y, 4000)) continue;
+            if (y <= 8) ++differ_upper; else ++differ_lower;
+        }
+    }
+    assert(differ_upper > 0);
+    assert(differ_lower > 0);
+}
+
 int main() {
     std::setbuf(stdout, nullptr);
     std::srand(42);   // 進化判定の再現性のため固定シード
@@ -1092,6 +1261,16 @@ int main() {
     RUN(test_kana_glyph_matches_misaki_a);
     RUN(test_kana_glyph_out_of_range_is_blank);
     RUN(test_status_level);
+    RUN(test_hour_of_day_and_night);
+    RUN(test_grass_stays_in_the_ground_strip);
+    RUN(test_grass_density_is_moderate);
+    RUN(test_grass_has_no_bare_gaps);
+    RUN(test_grass_ground_line_is_dotted);
+    RUN(test_sky_stays_in_the_sky_strip);
+    RUN(test_stars_twinkle_but_never_vanish);
+    RUN(test_sun_is_fixed_in_the_sky);
+    RUN(test_sun_shape_and_steady);
+    RUN(test_clouds_stay_in_sky_and_drift);
     RUN(test_menu_labels_for_young_and_adult);
     RUN(test_baby_menu_has_no_shear);
     RUN(test_baby_menu_cursor_wraps_at_five);

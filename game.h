@@ -93,6 +93,9 @@ public:
     int       hunger()      const { return _hunger; }
     int       happy()       const { return _happy; }
     int       wool()        const { return _wool; }
+    // ゲーム内の時刻（0〜23 時）。起動時は朝 8 時。22 時〜6 時が夜（就寝の判定と背景の空に使う）。
+    int       hourOfDay()   const;
+    bool      isNight()     const;
     bool      sleeping()    const { return _sleeping; }
     int       walkX()       const { return _walk_x; }
     int       walkTick()    const { return _walk_tick; }   // アクション中のアニメ進行用 (0..40)
