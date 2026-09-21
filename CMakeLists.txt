@@ -13,6 +13,7 @@ add_executable(mokoji
     main.cpp
     game.cpp
     jump_game.cpp
+    background.cpp
     display.cpp
     sound.cpp
     save.cpp

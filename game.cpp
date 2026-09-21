@@ -44,6 +44,15 @@ int menuSlot(Game::Stage stage, int i) {
 }
 }  // namespace
 
+int Game::hourOfDay() const {
+    return int((_age_ticks / TICKS_PER_HOUR + START_HOUR) % 24);
+}
+
+bool Game::isNight() const {
+    int hour = hourOfDay();
+    return hour >= 22 || hour < 6;
+}
+
 int Game::statusLevel(int value) {
     if (value <= 0) return 0;
     int level = (value + 19) / 20;   // 切り上げ：1〜20 → 1、21〜40 → 2、…、81〜100 → 5
@@ -232,8 +241,7 @@ void Game::tick() {
 
         // 睡眠度の更新は「ゲーム内 1 時間ごと」にゲート。
         // 起動時刻を朝 8 時にオフセットして boot 直後の即就寝を防ぐ。
-        int hour = (int(game_hour) + START_HOUR) % 24;
-        if (hour >= 22 || hour < 6) {
+        if (isNight()) {
             _sleepy = std::min(100, _sleepy + 1);
         } else if (_sleeping) {
             _sleepy = std::max(0, _sleepy - 2);

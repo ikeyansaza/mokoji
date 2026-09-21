@@ -1,6 +1,7 @@
 #pragma once
 #include "ssd1306.h"
 #include "game.h"
+#include "background.h"
 
 class Display {
 public:
@@ -9,6 +10,16 @@ public:
 
 private:
     SSD1306* _oled;
+
+    // 背景。毎フレーム関数を呼ぶ代わりに、起動時に列ごとのビットへ展開しておく。
+    uint8_t  _grass_cols[background::W];      // bit b = y が GRASS_TOP + b の草
+    uint32_t _sky_cols[2][background::W];     // bit y = 月・星（[0/1] は星のまたたきの 2 フレーム）
+
+    // 背景は、静止画のまま何時間も点灯し続けると OLED が焼き付くので、ゆっくり左右に動かして
+    // 同じ場所を光らせ続けない（就寝画面のスプライトと同じ ~8 秒周期で ±2px）。
+    static int backgroundDrift(const Game& g);
+    void drawGrass(int dx);
+    void drawNightSky(int frame, int dx);
 
     void drawMain(const Game& g);
     void drawMenu(const Game& g);

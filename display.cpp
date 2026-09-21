@@ -6,7 +6,51 @@
 #include <cstdio>
 #include <cstring>
 
-Display::Display(SSD1306* oled) : _oled(oled) {}
+Display::Display(SSD1306* oled) : _oled(oled) {
+    for (int x = 0; x < background::W; ++x) {
+        uint8_t grass = 0;
+        for (int b = 0; b < background::H - background::GRASS_TOP; ++b) {
+            if (background::grassPixel(x, background::GRASS_TOP + b)) grass |= uint8_t(1u << b);
+        }
+        _grass_cols[x] = grass;
+        for (int frame = 0; frame < 2; ++frame) {
+            uint32_t sky = 0;
+            for (int y = 0; y <= background::SKY_BOTTOM; ++y) {
+                if (background::moonPixel(x, y) || background::starPixel(x, y, frame)) sky |= (1u << y);
+            }
+            _sky_cols[frame][x] = sky;
+        }
+    }
+}
+
+int Display::backgroundDrift(const Game& g) {
+    static constexpr int8_t kDrift[8] = { 0, 1, 2, 1, 0, -1, -2, -1 };
+    return kDrift[(g.ageTicks() / 20) & 7];
+}
+
+// 草の地面。羊の足元より下の帯だけ。
+void Display::drawGrass(int dx) {
+    for (int x = 0; x < background::W; ++x) {
+        const int px = x + dx;
+        if (px < 0 || px >= background::W) continue;
+        const uint8_t bits = _grass_cols[x];
+        for (int b = 0; b < background::H - background::GRASS_TOP; ++b) {
+            if ((bits >> b) & 1u) _oled->setPixel(px, background::GRASS_TOP + b, true);
+        }
+    }
+}
+
+// 夜の空（月・星）。羊の上端より上の帯だけ。星は約 1 秒ごとに、十字になる星が入れ替わる。
+void Display::drawNightSky(int frame, int dx) {
+    for (int x = 0; x < background::W; ++x) {
+        const int px = x + dx;
+        if (px < 0 || px >= background::W) continue;
+        const uint32_t bits = _sky_cols[frame][x];
+        for (int y = 0; y <= background::SKY_BOTTOM; ++y) {
+            if ((bits >> y) & 1u) _oled->setPixel(px, y, true);
+        }
+    }
+}
 
 void Display::draw(const Game& g) {
     _oled->clear();
@@ -30,6 +74,11 @@ void Display::drawMain(const Game& g) {
     // ふわふわアイドル：12 tick 周期で 0/-1/-2/-1 と上下バウンス
     static constexpr int8_t kBob[4] = { 0, -1, -2, -1 };
     int bob = kBob[(g.ageTicks() / 6) & 3];
+
+    // 背景（草の地面。夜は月と星）。羊と重ならない上下の帯にあるので、先に描いてよい。
+    const int drift = backgroundDrift(g);
+    drawGrass(drift);
+    if (g.isNight()) drawNightSky(int((g.ageTicks() / 20) & 1u), drift);
 
     int sx = g.walkX();
     int sy = 12 + bob;
@@ -199,6 +248,7 @@ void Display::drawMinigame(const Game& g) {
     char buf[24];
 
     _oled->fillRect(0, GROUND_Y, SSD1306::W, 1, true);
+    drawGrass(backgroundDrift(g));   // 地面の線の下に草（上部はスコアとジャンプがあるので空は出さない）
 
     const bool over = (j.state() == JumpGame::State::OVER);
     auto sprite = selectSprite(g, Game::Face::RIGHT);
@@ -302,6 +352,10 @@ void Display::drawSleep(const Game& g) {
     // 焼き付き対策：スプライトと "zzz..." を ~8 秒周期で ±2px ドリフトさせる。
     static constexpr int8_t kDrift[8] = { 0, 1, 2, 1, 0, -1, -2, -1 };
     int dx = kDrift[(g.ageTicks() / 20) & 7];
+
+    // 背景：草の地面と、夜の空（寝ているのは夜、という見せ方なので常に出す）
+    drawGrass(dx);
+    drawNightSky(int((g.ageTicks() / 20) & 1u), dx);
 
     // 起きてる時と同じ 2x スケールで表示（サイズが急に変わって「消えた→現れた」と
     // 見えるのを防ぐ）。羊の中央を画面中央寄りに配置。
