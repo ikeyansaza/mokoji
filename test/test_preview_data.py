@@ -73,8 +73,14 @@ class FormsTest(unittest.TestCase):
         counts = {}
         for f in self.forms:
             counts[f["stage"]] = counts.get(f["stage"], 0) + 1
-        # ベビー 1 + 若羊 3 系統 + 成体 7 品種 + 特殊成長 7（増毛 5 + 角長 2）
-        self.assertEqual(counts, {"BABY": 1, "YOUNG": 3, "ADULT": 7, "SPECIAL": 7})
+        # ベビー 1 + 若羊 3 系統 + 成体 6 品種 + 特殊成長 6（増毛 4 + 角長 2）。MERINO は進化先から外して、没候補に移した
+        self.assertEqual(counts, {"BABY": 1, "YOUNG": 3, "ADULT": 6, "SPECIAL": 6})
+
+    def test_merino_is_not_a_game_sprite(self):
+        # MERINO は進化先から外したので、ゲームのスプライト（進化ツリー）には出さない
+        self.assertEqual([f["id"] for f in self.forms if f["breed"] == "MERINO"], [])
+        self.assertFalse([n for n in sprites_gen.SPRITE_NAMES if "MERINO" in n])
+        self.assertFalse([n for n in dir(sprites) if "MERINO" in n])
 
     def test_forms_are_ordered_by_stage(self):
         order = {"BABY": 0, "YOUNG": 1, "ADULT": 2, "SPECIAL": 3}
@@ -146,6 +152,14 @@ class CandidatesTest(unittest.TestCase):
                 in_file = len([l for l in f if l.startswith(tuple("ABCDEFGHIJKLMNOPQRSTUVWXYZ")) and " = (" in l])
             with self.subTest(topic=topic):
                 self.assertEqual(len([c for c in self.cands if c["topic"] == topic]), in_file)
+
+    def test_merino_is_kept_as_rejected_candidates(self):
+        # 外した MERINO の絵は、没候補として残す（復活させるときの出発点）
+        merino = [c for c in self.cands if c["topic"] == "merino"]
+        self.assertEqual({c["id"] for c in merino}, {"MERINO", "MERINO_FLUFFY"})
+        for c in merino:
+            with self.subTest(candidate=c["id"]):
+                self.assertEqual(c["kind"], "rejected")
 
     def test_all_topic_folders_are_covered(self):
         # docs に新しいトピックのフォルダを足したら、sprites_gen.py の TOPICS にも足す

@@ -56,7 +56,7 @@ Display は Game の const 参照だけ受け取る read-only 設計。
 
 ```
 BABY（共通）
-  ├─ YOUNG_MOKO    → CORRIEDALE / LINCOLN（MERINO は、一旦、進化先から外している）
+  ├─ YOUNG_MOKO    → CORRIEDALE / LINCOLN（MERINO は、一旦、進化先から外している。絵は docs/sprite-candidates/merino/）
   ├─ YOUNG_SUFFOLK → SUFFOLK / HAMPSHIRE
   └─ YOUNG_WILD   → MOUFLON / BIGHORN
 ```
