@@ -170,6 +170,20 @@ class FluffySpriteTest(unittest.TestCase):
             with self.subTest(sprite=name):
                 self.assertGreater(len(on_pixels(grid(name))), len(on_pixels(grid(base))))
 
+    def test_wool_is_two_pixels_wide(self):
+        # 毛は体（row 10〜17）の左右の端の外側に 2px（画面の端で切れる分は除く）。耳（row 9）と足元（row 18〜）には足さない
+        for name, base in FLUFFY_BASE.items():
+            with self.subTest(sprite=name):
+                rows, base_rows = grid(name), grid(base)
+                for y in range(10, 18):
+                    xs = [i for i, c in enumerate(base_rows[y]) if c == "#"]
+                    if not xs:
+                        continue
+                    self.assertEqual(rows[y].index("#"), max(0, xs[0] - 2), f"{name} row {y}: 左の毛の幅")
+                    self.assertEqual(rows[y].rindex("#"), min(23, xs[-1] + 2), f"{name} row {y}: 右の毛の幅")
+                self.assertEqual(rows[:10], base_rows[:10], f"{name}: 耳より上には毛を足さない")
+                self.assertEqual(rows[18:], base_rows[18:], f"{name}: 足元には毛を足さない")
+
     def test_wool_is_attached_to_the_body(self):
         # 毛が体から浮いた点・棒になると、毛に見えない。通常版より塊（4 近傍）が増えないこと。
         # 毛が体の別々のパーツ（耳・腕など）をつなげて塊が減るのは、毛が体につながっている証拠なので構わない。

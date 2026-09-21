@@ -285,11 +285,12 @@ static void test_save_and_load_round_trip() {
 // 就寝中の Game を作る（テスト用ヘルパ）。
 // tick で就寝させると数日分かかるため、セーブデータ経由で睡眠状態を注入する。
 // 空腹・幸福を中途半端な値、wool を刈れる量にして、行動が実効化されたら差が出るようにしておく。
-static Game make_sleeping_game(Game::Stage stage = Game::Stage::BABY) {
+static Game make_sleeping_game(Game::Stage stage = Game::Stage::BABY, Game::Breed breed = Game::Breed::NONE) {
     Game base(nullptr);
     skip_naming(base);
     GameSaveData d = base.saveData();
     d.stage    = uint8_t(stage);
+    d.breed    = uint8_t(breed);
     d.sleeping = 1;
     d.sleepy   = 90;
     d.hunger   = 50;
@@ -329,8 +330,10 @@ static void test_sleeping_other_actions_are_rejected() {
         Game::Action::FEED, Game::Action::SHEAR, Game::Action::MINI,
     };
     for (Game::Action act : rejected) {
-        // 毛刈りはベビーのメニューに無いので、若羊で確認する
-        Game g = make_sleeping_game(act == Game::Action::SHEAR ? Game::Stage::YOUNG_MOKO : Game::Stage::BABY);
+        // 毛刈りは成体のメニューにだけあるので、成体で確認する
+        Game g = act == Game::Action::SHEAR
+                     ? make_sleeping_game(Game::Stage::ADULT, Game::Breed::CORRIEDALE)
+                     : make_sleeping_game(Game::Stage::BABY);
         menu_select(g, act);
         assert(g.hunger() == 50);
         assert(g.happy()  == 50);
@@ -384,41 +387,58 @@ static Game make_stage_game(Game::Stage stage) {
     return Game(nullptr, &d);
 }
 
-// メニューラベル（UTF-8）。
-static void test_menu_labels_for_young_and_adult() {
-    // 毛刈りは若羊から。ベビーのメニューには出ない。
-    Game g = make_stage_game(Game::Stage::YOUNG_MOKO);
-    assert(g.menuCount() == 6);
-    assert(std::string(g.menuLabel(0)) == "ごはん");    // FEED
-    assert(std::string(g.menuLabel(1)) == "なでる");    // PET
-    assert(std::string(g.menuLabel(2)) == "毛刈り");    // SHEAR
-    assert(std::string(g.menuLabel(3)) == "ゲーム");    // MINI
-    assert(std::string(g.menuLabel(4)) == "プロフ");    // PROFILE
-    assert(std::string(g.menuLabel(5)) == "もどる");    // BACK
-    assert(g.menuAction(2) == Game::Action::SHEAR);
-    assert(g.menuAction(4) == Game::Action::PROFILE);
+// 成体を品種指定で作る。
+static Game make_adult_game(Game::Breed breed) {
+    Game base(nullptr);
+    skip_naming(base);
+    GameSaveData d = base.saveData();
+    d.stage = uint8_t(Game::Stage::ADULT);
+    d.breed = uint8_t(breed);
+    return Game(nullptr, &d);
 }
 
-static void test_baby_menu_has_no_shear() {
-    Game g(nullptr);
-    skip_naming(g);
-    assert(g.stage() == Game::Stage::BABY);
-    assert(g.menuCount() == 5);
-    assert(std::string(g.menuLabel(0)) == "ごはん");
-    assert(std::string(g.menuLabel(1)) == "なでる");
-    assert(std::string(g.menuLabel(2)) == "ゲーム");
-    assert(std::string(g.menuLabel(3)) == "プロフ");
-    assert(std::string(g.menuLabel(4)) == "もどる");
-    assert(*g.menuLabel(5) == '\0');                    // 5 項目目より先は空
-    assert(g.menuAction(0) == Game::Action::FEED);
-    assert(g.menuAction(1) == Game::Action::PET);
-    assert(g.menuAction(2) == Game::Action::MINI);
-    assert(g.menuAction(3) == Game::Action::PROFILE);
-    assert(g.menuAction(4) == Game::Action::NONE);       // もどる
-    assert(g.menuAction(5) == Game::Action::NONE);
-    for (int i = 0; i < Game::MENU_COUNT; ++i) {
-        assert(g.menuAction(i) != Game::Action::SHEAR);
-        assert(g.menuAction(i) != Game::Action::POLISH);
+// メニューラベル（UTF-8）。
+static void test_menu_labels_for_young_and_adult() {
+    // 毛刈り・角研ぎは成体だけ。ベビーと若羊のメニューには出ない（5 項目）。
+    Game young = make_stage_game(Game::Stage::YOUNG_MOKO);
+    assert(young.menuCount() == 5);
+    assert(std::string(young.menuLabel(2)) == "ゲーム");
+    assert(young.menuAction(2) == Game::Action::MINI);
+
+    Game moko = make_adult_game(Game::Breed::CORRIEDALE);
+    assert(moko.menuCount() == 6);
+    assert(std::string(moko.menuLabel(0)) == "ごはん");    // FEED
+    assert(std::string(moko.menuLabel(1)) == "なでる");    // PET
+    assert(std::string(moko.menuLabel(2)) == "毛刈り");    // SHEAR
+    assert(std::string(moko.menuLabel(3)) == "ゲーム");    // MINI
+    assert(std::string(moko.menuLabel(4)) == "プロフ");    // PROFILE
+    assert(std::string(moko.menuLabel(5)) == "もどる");    // BACK
+    assert(moko.menuAction(2) == Game::Action::SHEAR);
+    assert(moko.menuAction(4) == Game::Action::PROFILE);
+}
+
+static void test_baby_and_young_menu_have_no_shear_or_polish() {
+    const Game::Stage stages[] = { Game::Stage::BABY, Game::Stage::YOUNG_MOKO,
+                                   Game::Stage::YOUNG_SUFFOLK, Game::Stage::YOUNG_WILD };
+    for (Game::Stage s : stages) {
+        Game g = make_stage_game(s);
+        assert(g.menuCount() == 5);
+        assert(std::string(g.menuLabel(0)) == "ごはん");
+        assert(std::string(g.menuLabel(1)) == "なでる");
+        assert(std::string(g.menuLabel(2)) == "ゲーム");
+        assert(std::string(g.menuLabel(3)) == "プロフ");
+        assert(std::string(g.menuLabel(4)) == "もどる");
+        assert(*g.menuLabel(5) == '\0');                    // 5 項目目より先は空
+        assert(g.menuAction(0) == Game::Action::FEED);
+        assert(g.menuAction(1) == Game::Action::PET);
+        assert(g.menuAction(2) == Game::Action::MINI);
+        assert(g.menuAction(3) == Game::Action::PROFILE);
+        assert(g.menuAction(4) == Game::Action::NONE);       // もどる
+        assert(g.menuAction(5) == Game::Action::NONE);
+        for (int i = 0; i < Game::MENU_COUNT; ++i) {
+            assert(g.menuAction(i) != Game::Action::SHEAR);
+            assert(g.menuAction(i) != Game::Action::POLISH);
+        }
     }
 }
 
@@ -437,51 +457,75 @@ static void test_baby_menu_cursor_wraps_at_five() {
     assert(g.screen() == Game::Screen::MAIN);
 }
 
-static void test_baby_wool_does_not_grow_but_young_does() {
-    // ベビーは毛刈りできないので、毛は伸ばさない（若羊に進化した時点で毛が溜まっていないように）
-    Game baby(nullptr);
-    skip_naming(baby);
-    for (uint32_t i = 0; i < 10 * Game::TICKS_PER_HOUR; ++i) baby.tick();
-    assert(baby.wool() == 0);
-    Game young = make_stage_game(Game::Stage::YOUNG_MOKO);
-    for (uint32_t i = 0; i < 10 * Game::TICKS_PER_HOUR; ++i) young.tick();
-    assert(young.wool() == 10);                          // 若羊は 1 時間に +1
+static void test_wool_and_horn_grow_only_for_adults() {
+    // 毛・角は、毛刈り・角研ぎができる成体だけ伸ばす（若羊で伸ばすと、進化した時点で溜まったままになる）
+    const Game::Stage young[] = { Game::Stage::BABY, Game::Stage::YOUNG_MOKO,
+                                  Game::Stage::YOUNG_SUFFOLK, Game::Stage::YOUNG_WILD };
+    for (Game::Stage s : young) {
+        Game g = make_stage_game(s);
+        for (uint32_t i = 0; i < 10 * Game::TICKS_PER_HOUR; ++i) g.tick();
+        assert(g.wool() == 0);
+        assert(g.horn() == 0);
+    }
+    Game moko = make_adult_game(Game::Breed::CORRIEDALE);
+    for (uint32_t i = 0; i < 10 * Game::TICKS_PER_HOUR; ++i) moko.tick();
+    assert(moko.wool() == 20);                           // 成体は 1 時間に +2
+    assert(moko.horn() == 0);
+    Game wild = make_adult_game(Game::Breed::MOUFLON);
+    for (uint32_t i = 0; i < 10 * Game::TICKS_PER_HOUR; ++i) wild.tick();
+    assert(wild.horn() == 20);
+    assert(wild.wool() == 0);
 }
 
-static void test_evolution_resets_menu_cursor() {
-    // 項目数が 5 → 6 に変わるので、開いたまま進化してもカーソルの意味がずれないよう先頭へ戻す
-    Game g(nullptr);
-    skip_naming(g);
-    g.onButton(Game::Button::CENTER);
+// 進化の直前（あと 1 tick で進化する）の Game を作る。毛・角は古いセーブで溜まっている想定にする。
+static Game make_about_to_evolve(Game::Stage stage, uint32_t days) {
+    Game base(nullptr);
+    skip_naming(base);
+    GameSaveData d = base.saveData();
+    d.stage     = uint8_t(stage);
+    d.wool      = 70;
+    d.horn      = 70;
+    d.age_ticks = days * Game::TICKS_PER_DAY - 1;
+    return Game(nullptr, &d);
+}
+
+static void test_evolution_resets_menu_cursor_when_item_count_changes() {
+    // 若羊 → 成体で、項目数が 5 → 6 に変わるので、開いたまま進化してもカーソルの意味がずれないよう先頭へ戻す
+    Game g = make_about_to_evolve(Game::Stage::YOUNG_MOKO, 7);
+    g.onButton(Game::Button::CENTER);                    // メニューを開く
     for (int i = 0; i < 4; ++i) g.onButton(Game::Button::RIGHT);
-    assert(g.menuCursor() == 4);
-    for (uint32_t i = 0; i < 3 * Game::TICKS_PER_DAY + Game::TICKS_PER_HOUR; ++i) g.tick();
-    assert(g.stage() != Game::Stage::BABY);
+    assert(g.menuCursor() == 4);                         // 若羊のメニューの末尾（もどる）
+    g.tick();                                            // 7 日めに入り、成体へ進化
+    assert(g.stage() == Game::Stage::ADULT);
     assert(g.menuCount() == 6);
     assert(g.menuCursor() == 0);
 }
 
+static void test_evolution_clears_wool_and_horn() {
+    Game young = make_about_to_evolve(Game::Stage::BABY, 3);
+    young.tick();                                        // ベビー → 若羊
+    assert(young.stage() != Game::Stage::BABY);
+    assert(young.wool() == 0 && young.horn() == 0);
+    Game adult = make_about_to_evolve(Game::Stage::YOUNG_WILD, 7);
+    adult.tick();                                        // 若羊 → 成体
+    assert(adult.stage() == Game::Stage::ADULT);
+    assert(adult.wool() == 0 && adult.horn() == 0);
+}
+
 static void test_menu_label_polish_for_wild() {
-    Game base(nullptr);
-    skip_naming(base);
-    GameSaveData d = base.saveData();
-    d.stage = uint8_t(Game::Stage::YOUNG_WILD);
-    Game g(nullptr, &d);
+    Game g = make_adult_game(Game::Breed::MOUFLON);
     assert(g.family() == Game::Family::WILD);
     assert(std::string(g.menuLabel(2)) == "角研ぎ");   // POLISH（ワイルド系は毛ではなく角）
+    assert(g.menuAction(2) == Game::Action::POLISH);
 }
 
 static void test_menu_labels_renderable_and_bounded() {
     // 全字がフォントに収録されていて（未収録は空白表示になる）、2 倍表示（16px/字）で
     // 左右の < > と重ならない幅に収まる。ワイルド系のラベルも含めて確認する。
-    Game base(nullptr);
-    skip_naming(base);
-    GameSaveData d = base.saveData();
-    d.stage = uint8_t(Game::Stage::YOUNG_WILD);
-    Game wild(nullptr, &d);
+    Game wild = make_adult_game(Game::Breed::MOUFLON);
     Game baby(nullptr);
     skip_naming(baby);
-    Game moko = make_stage_game(Game::Stage::YOUNG_MOKO);
+    Game moko = make_adult_game(Game::Breed::CORRIEDALE);
 
     for (const Game* g : { &baby, &moko, &wild }) {
         for (int i = 0; i < g->menuCount(); ++i) {
@@ -859,7 +903,6 @@ static void test_minigame_starts_from_menu() {
 
 static void test_minigame_reward_and_hunger_cost() {
     Game g = make_game_with(50, 50);
-    GameSaveData before = g.saveData();
     mini_now = 100000; g.setNowMs(mini_now);
     menu_select(g, Game::Action::MINI);
     mini_play(g, 3);
@@ -868,9 +911,6 @@ static void test_minigame_reward_and_hunger_cost() {
     assert(g.happy() == 50 + 3 * 2);
     assert(g.hunger() == 50 - 5);
     assert(g.miniReward() == 6);
-    GameSaveData after = g.saveData();
-    assert(after.tend_feed == before.tend_feed && after.tend_pet == before.tend_pet);
-    assert(after.tend_shear == before.tend_shear && after.tend_polish == before.tend_polish);
     assert(g.isDirty());
 }
 
@@ -967,16 +1007,6 @@ static void test_profile_allowed_while_sleeping() {
     assert(g.hunger() == 50 && g.happy() == 50);
 }
 
-// 成体を品種指定で作る。
-static Game make_adult_game(Game::Breed breed) {
-    Game base(nullptr);
-    skip_naming(base);
-    GameSaveData d = base.saveData();
-    d.stage = uint8_t(Game::Stage::ADULT);
-    d.breed = uint8_t(breed);
-    return Game(nullptr, &d);
-}
-
 static void test_kind_names() {
     assert(std::string(make_stage_game(Game::Stage::BABY).kindName())          == "ベビー");
     assert(std::string(make_stage_game(Game::Stage::YOUNG_MOKO).kindName())    == "若羊 モコ系");
@@ -1023,11 +1053,12 @@ static void test_age_days_counts_from_first_day() {
 // ---- 待つ音は予約して、画面を切り替えたあとに鳴らす --------------------------
 // 待つ音（餌・撫でる・毛刈り・進化）をボタン処理の中で鳴らすと、鳴り終わるまで画面の描画が遅れ、
 // メニューが表示されたまま音が聞こえる。Game は音を予約し、main が描画のあとに playPendingSfx で鳴らす。
-static Game make_young_with_growth(Game::Stage stage) {
+static Game make_adult_with_growth(Game::Breed breed) {
     Game base(nullptr);
     skip_naming(base);
     GameSaveData d = base.saveData();
-    d.stage = uint8_t(stage);
+    d.stage = uint8_t(Game::Stage::ADULT);
+    d.breed = uint8_t(breed);
     d.wool  = 50;
     d.horn  = 50;
     return Game(nullptr, &d);
@@ -1046,18 +1077,18 @@ static void test_action_sounds_are_deferred() {
     g.playPendingSfx();
     assert(g.pendingSfx() == Game::Sfx::NONE);
 
-    Game moko = make_young_with_growth(Game::Stage::YOUNG_MOKO);
+    Game moko = make_adult_with_growth(Game::Breed::CORRIEDALE);
     menu_select(moko, Game::Action::SHEAR);
     assert(moko.pendingSfx() == Game::Sfx::JOKI);
 
-    Game wild = make_young_with_growth(Game::Stage::YOUNG_WILD);
+    Game wild = make_adult_with_growth(Game::Breed::MOUFLON);
     menu_select(wild, Game::Action::POLISH);
     assert(wild.pendingSfx() == Game::Sfx::JOKI);
 }
 
 static void test_no_sound_when_action_has_no_effect() {
     // 毛が短くて刈れないとき・就寝中の撫でる（羊は起きない）は、音を予約しない
-    Game g = make_stage_game(Game::Stage::YOUNG_MOKO);   // 毛は 0
+    Game g = make_adult_game(Game::Breed::CORRIEDALE);   // 毛は 0
     menu_select(g, Game::Action::SHEAR);
     assert(g.pendingSfx() == Game::Sfx::NONE);
     Game s = make_sleeping_game();
@@ -1496,6 +1527,145 @@ static void test_feed_action_lasts_longer_than_other_actions() {
     assert(Game::FEED_ACTION_TICKS > Game::ACTION_TICKS);
 }
 
+// ---- 進化の重み（空腹・幸福の値だけで決め、残りは乱数）--------------------------
+// 重みは、乱数と切り離した純粋関数にしてあるので、テストで直接確かめる。
+static void test_young_choice_weights() {
+    Game::EvoChoice c[3];
+    Game::youngChoices(100, 100, c);             // 満腹で幸福
+    assert(c[0].stage == Game::Stage::YOUNG_MOKO    && c[0].weight == 90);   // 50 + 100 * 40%
+    assert(c[1].stage == Game::Stage::YOUNG_SUFFOLK && c[1].weight == 90);   // 50 + 100 * 40%
+    assert(c[2].stage == Game::Stage::YOUNG_WILD    && c[2].weight == 50);   // 50 + (200 - 200) * 20%
+    Game::youngChoices(0, 0, c);                 // 空腹で不幸: ワイルド系が一番出やすい
+    assert(c[0].weight == 50 && c[1].weight == 50 && c[2].weight == 90);
+    Game::youngChoices(100, 0, c);               // 満腹だけ: モコ系
+    assert(c[0].weight == 90 && c[1].weight == 50 && c[2].weight == 70);
+    Game::youngChoices(0, 100, c);               // 幸福だけ: サフォーク系
+    assert(c[0].weight == 50 && c[1].weight == 90 && c[2].weight == 70);
+    for (int i = 0; i < 3; ++i) assert(c[i].breed == Game::Breed::NONE);
+}
+
+static void test_choice_weights_stay_in_range_for_out_of_range_values() {
+    // 範囲外の値（負・100 超）でも、重みが基本値（50）より小さくならず、上限を超えない
+    Game::EvoChoice c[3];
+    Game::youngChoices(-30, 250, c);
+    for (int i = 0; i < 3; ++i) assert(c[i].weight >= 50 && c[i].weight <= 90);
+    Game::EvoChoice a[2];
+    assert(Game::adultChoices(Game::Stage::YOUNG_SUFFOLK, 300, -10, a) == 2);
+    for (int i = 0; i < 2; ++i) assert(a[i].weight >= 50 && a[i].weight <= 100);
+}
+
+static void test_adult_choice_weights() {
+    Game::EvoChoice c[2];
+    // モコ系: CORRIEDALE / LINCOLN を半々（MERINO は抽選に入らない）
+    assert(Game::adultChoices(Game::Stage::YOUNG_MOKO, 100, 100, c) == 2);
+    assert(c[0].breed == Game::Breed::CORRIEDALE && c[0].weight == 50);
+    assert(c[1].breed == Game::Breed::LINCOLN    && c[1].weight == 50);
+    for (int i = 0; i < 2; ++i) assert(c[i].stage == Game::Stage::ADULT);
+    // サフォーク系: 幸福なほど HAMPSHIRE が出やすい
+    assert(Game::adultChoices(Game::Stage::YOUNG_SUFFOLK, 100, 100, c) == 2);
+    assert(c[0].breed == Game::Breed::SUFFOLK   && c[0].weight == 50);
+    assert(c[1].breed == Game::Breed::HAMPSHIRE && c[1].weight == 100);      // 50 + 100 * 50%
+    Game::adultChoices(Game::Stage::YOUNG_SUFFOLK, 100, 0, c);
+    assert(c[1].weight == 50);
+    // ワイルド系: 満腹なほど BIGHORN が出やすい
+    assert(Game::adultChoices(Game::Stage::YOUNG_WILD, 100, 100, c) == 2);
+    assert(c[0].breed == Game::Breed::MOUFLON && c[0].weight == 50);
+    assert(c[1].breed == Game::Breed::BIGHORN && c[1].weight == 100);
+    Game::adultChoices(Game::Stage::YOUNG_WILD, 0, 100, c);
+    assert(c[1].weight == 50);
+    // 若羊でなければ、選択肢はない
+    assert(Game::adultChoices(Game::Stage::BABY, 50, 50, c) == 0);
+    assert(Game::adultChoices(Game::Stage::ADULT, 50, 50, c) == 0);
+}
+
+static void test_pick_weighted_uses_the_whole_roll() {
+    Game::EvoChoice c[3] = {
+        { Game::Stage::YOUNG_MOKO,    Game::Breed::NONE, 30 },
+        { Game::Stage::YOUNG_SUFFOLK, Game::Breed::NONE, 20 },
+        { Game::Stage::YOUNG_WILD,    Game::Breed::NONE, 50 },
+    };
+    assert(Game::pickWeighted(c, 3, 0)   == 0);
+    assert(Game::pickWeighted(c, 3, 29)  == 0);
+    assert(Game::pickWeighted(c, 3, 30)  == 1);
+    assert(Game::pickWeighted(c, 3, 49)  == 1);
+    assert(Game::pickWeighted(c, 3, 50)  == 2);
+    assert(Game::pickWeighted(c, 3, 99)  == 2);
+    assert(Game::pickWeighted(c, 3, 100) == 0);                     // roll は、合計で割った余りで使う
+    assert(Game::pickWeighted(c, 3, 4000000099u) == 2);             // 32 ビットの乱数の全範囲を使う
+    Game::EvoChoice zero[2] = {
+        { Game::Stage::ADULT, Game::Breed::MOUFLON, 0 },
+        { Game::Stage::ADULT, Game::Breed::BIGHORN, 0 },
+    };
+    assert(Game::pickWeighted(zero, 2, 12345) == 0);                // 合計が 0 なら 0 番目
+}
+
+// ---- 進化の結果 ----------------------------------------------------------------
+static Game make_evolving(Game::Stage stage, uint32_t days, int hunger, int happy) {
+    Game base(nullptr);
+    skip_naming(base);
+    GameSaveData d = base.saveData();
+    d.stage     = uint8_t(stage);
+    d.hunger    = uint8_t(hunger);
+    d.happy     = uint8_t(happy);
+    d.age_ticks = days * Game::TICKS_PER_DAY - 1;
+    return Game(nullptr, &d);
+}
+
+static void test_adult_evolution_never_picks_merino() {
+    int corriedale = 0, lincoln = 0;
+    for (int i = 0; i < 300; ++i) {
+        Game g = make_evolving(Game::Stage::YOUNG_MOKO, 7, 100, 100);
+        g.tick();
+        assert(g.stage() == Game::Stage::ADULT);
+        assert(g.breed() != Game::Breed::MERINO);
+        if (g.breed() == Game::Breed::CORRIEDALE) ++corriedale;
+        if (g.breed() == Game::Breed::LINCOLN)    ++lincoln;
+    }
+    assert(corriedale > 0 && lincoln > 0);                // 2 品種とも出る（乱数で決まる）
+    assert(corriedale + lincoln == 300);
+}
+
+static void test_young_evolution_follows_hunger_and_happy() {
+    // 空腹・不幸なほどワイルド系が出やすく、満腹・幸福なほど出にくい（重み 88 対 50 なので、300 回なら十分に差が出る）
+    int wild_low = 0, wild_high = 0;
+    for (int i = 0; i < 300; ++i) {
+        Game low = make_evolving(Game::Stage::BABY, 3, 5, 5);
+        low.tick();
+        if (low.stage() == Game::Stage::YOUNG_WILD) ++wild_low;
+        Game high = make_evolving(Game::Stage::BABY, 3, 100, 100);
+        high.tick();
+        if (high.stage() == Game::Stage::YOUNG_WILD) ++wild_high;
+    }
+    assert(wild_low > wild_high + 30);
+}
+
+static void test_young_evolution_can_pick_every_family() {
+    // 抽選が乱数の全範囲を使うこと（0〜127 だけだと、最後の選択肢が選ばれにくい）
+    int count[3] = {0, 0, 0};
+    for (int i = 0; i < 600; ++i) {
+        Game g = make_evolving(Game::Stage::BABY, 3, 100, 100);
+        g.tick();
+        if (g.stage() == Game::Stage::YOUNG_MOKO)    ++count[0];
+        if (g.stage() == Game::Stage::YOUNG_SUFFOLK) ++count[1];
+        if (g.stage() == Game::Stage::YOUNG_WILD)    ++count[2];
+    }
+    assert(count[0] + count[1] + count[2] == 600);
+    assert(count[2] > 60);                                 // ワイルド系（重み 50 / 合計 230）も、ちゃんと出る
+}
+
+// ---- セーブ形式は変えない -------------------------------------------------------
+static void test_old_save_with_tend_values_still_loads() {
+    Game base(nullptr);
+    skip_naming(base);
+    GameSaveData d = base.saveData();
+    d.tend_feed = 20; d.tend_pet = 30; d.tend_shear = 40; d.tend_polish = 50;   // 古いセーブの値
+    Game g(nullptr, &d);
+    assert(g.stage() == base.stage());                    // 読み込める
+    GameSaveData out = g.saveData();
+    assert(out.tend_feed == 0 && out.tend_pet == 0 && out.tend_shear == 0 && out.tend_polish == 0);
+    assert(out.magic == 0x4D4F4B35u);                     // MAGIC は変えない（今の羊のセーブを消さない）
+}
+
 int main() {
     std::setbuf(stdout, nullptr);
     std::srand(42);   // 進化判定の再現性のため固定シード
@@ -1549,18 +1719,27 @@ int main() {
     RUN(test_sun_shape_and_steady);
     RUN(test_clouds_stay_in_sky_and_drift);
     RUN(test_menu_labels_for_young_and_adult);
-    RUN(test_baby_menu_has_no_shear);
+    RUN(test_baby_and_young_menu_have_no_shear_or_polish);
     RUN(test_baby_menu_cursor_wraps_at_five);
-    RUN(test_baby_wool_does_not_grow_but_young_does);
+    RUN(test_wool_and_horn_grow_only_for_adults);
     RUN(test_action_sounds_are_deferred);
     RUN(test_no_sound_when_action_has_no_effect);
     RUN(test_evolution_sound_is_deferred);
+    RUN(test_young_choice_weights);
+    RUN(test_choice_weights_stay_in_range_for_out_of_range_values);
+    RUN(test_adult_choice_weights);
+    RUN(test_pick_weighted_uses_the_whole_roll);
+    RUN(test_adult_evolution_never_picks_merino);
+    RUN(test_young_evolution_follows_hunger_and_happy);
+    RUN(test_young_evolution_can_pick_every_family);
+    RUN(test_old_save_with_tend_values_still_loads);
     RUN(test_profile_opens_and_any_button_closes);
     RUN(test_profile_allowed_while_sleeping);
     RUN(test_kind_names);
     RUN(test_kind_names_and_profile_labels_renderable);
     RUN(test_age_days_counts_from_first_day);
-    RUN(test_evolution_resets_menu_cursor);
+    RUN(test_evolution_resets_menu_cursor_when_item_count_changes);
+    RUN(test_evolution_clears_wool_and_horn);
     RUN(test_menu_label_polish_for_wild);
     RUN(test_menu_labels_renderable_and_bounded);
     RUN(test_utf8_decode);

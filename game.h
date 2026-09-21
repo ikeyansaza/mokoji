@@ -28,6 +28,20 @@ public:
     };
     // 系統（Stage / Breed から導出可能）
     enum class Family : uint8_t { NONE, MOKO, SUFFOLK, WILD };
+
+    // 進化の候補と重み。進化のときの空腹（hunger）・幸福（happy）の値（0〜100）だけで重みを決め、
+    // 残りは乱数で選ぶ。乱数と切り離した純粋関数にしてあるので、テストで重みを直接確かめられる。
+    struct EvoChoice {
+        Stage stage;    // 進化後の成長段階
+        Breed breed;    // 進化後の品種（ベビー → 若羊では NONE）
+        int   weight;   // 選ばれやすさ
+    };
+    // ベビー → 若羊。モコ系・サフォーク系・ワイルド系の 3 つ（この順）を out に書く。
+    static void youngChoices(int hunger, int happy, EvoChoice out[3]);
+    // 若羊 → 成体。若羊の段階（YOUNG_*）から、その系統の 2 品種を out に書いて、個数を返す（若羊でなければ 0）。
+    static int  adultChoices(Stage young, int hunger, int happy, EvoChoice out[2]);
+    // 重みに従って 1 つ選ぶ。roll は乱数（roll % 重みの合計 で選ぶ）。合計が 0 以下なら 0 番目。
+    static int  pickWeighted(const EvoChoice* choices, int n, uint32_t roll);
     enum class Screen     : uint8_t { MAIN, MENU, GRAVE, NAMING, MINIGAME, PROFILE };
     enum class Face       : uint8_t { LEFT, FRONT, RIGHT };
     enum class Action     : uint8_t { NONE, FEED, PET, SHEAR, POLISH, MINI, PROFILE };
@@ -49,7 +63,7 @@ public:
     static constexpr int  ACTION_TICKS      = 40;   // 2 秒
     static constexpr int  FEED_ACTION_TICKS = 60;   // 3 秒
     // 系統別に「CUT/POLI」が切り替わるため、メニュー項目とラベルは Game の状態を見て返す。
-    // ベビーは毛刈りができないので、メニューは 1 項目少ない（MENU_COUNT - 1）。
+    // 毛刈り・角研ぎは成体だけ。ベビーと若羊は、メニューが 1 項目少ない（MENU_COUNT - 1）。
     int         menuCount() const;
     Action      menuAction(int i) const;
     const char* menuLabel(int i)  const;   // UTF-8
@@ -138,13 +152,9 @@ private:
     int        _hunger;
     int        _happy;
     int        _sleepy;
-    int        _wool;            // モコ・サフォーク系の毛量、SHEAR で 0 リセット
-    int        _horn;            // ワイルド系の角の長さ、POLISH で 0 リセット
+    int        _wool;            // モコ・サフォーク系（成体）の毛量、SHEAR で 0 リセット
+    int        _horn;            // ワイルド系（成体）の角の長さ、POLISH で 0 リセット
     uint32_t   _age_ticks;
-    int        _tend_feed;
-    int        _tend_pet;
-    int        _tend_shear;
-    int        _tend_polish;     // POLISH（角研ぎ）の世話回数
     bool       _sleeping;
     uint8_t    _lifespan_days;   // 10-15 日のランダム個体寿命（自然死の上限）
 

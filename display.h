@@ -38,7 +38,6 @@ private:
 
     // 24x24 スプライト [24][3] のポインタを返す。
     const uint8_t (*selectSprite(const Game& g, Game::Face faceOverride))[3];
-    void drawWool(int wool, int sx);
     void drawActionFx(const Game& g);
     void drawFaceFx(const Game& g, int sx, int sy);
 };
