@@ -129,13 +129,13 @@
         }
 
         /* ── 左右の列 ──
-           左: OLED とアニメの操作 → 貼り付け欄。右: zoom → ツリー・貼り付けた候補・没候補。
+           左: 上の段（OLED と、その右隣のアニメの操作・zoom）→ 貼り付け欄。右: ツリー・貼り付けた候補・没候補。
            狭い画面では、2 列が横に並べなければ縦に折り返し、ページ全体をスクロールする。 */
         #left-col {
             display: flex;
             flex-direction: column;
             gap: 14px;
-            flex: 1 1 340px;
+            flex: 1 1 860px;
             min-width: 280px;
         }
 
@@ -264,10 +264,6 @@
             color: var(--text-hi);
             padding: 3px 6px;
             border-radius: 3px;
-        }
-
-        #fps-val {
-            min-width: 24px;
         }
 
         /* ── ピクセルグリッド拡大 ── */
@@ -411,6 +407,7 @@
            1 ドットが整数ピクセルになるようにし、ドットが崩れないようにする。 */
         :root {
             --oled-w: 768px;
+            --right-w: 940px;   /* 右の列の幅。ツリー（約 920px）が収まる幅 */
         }
 
         #oled {
@@ -418,17 +415,46 @@
             height: calc(var(--oled-w) / 2);
         }
 
-        #oled-block,
-        #zoom-block,
+        /* 左の上の段: OLED と、その右隣（アニメの操作・zoom）。幅が足りなければ、右隣は OLED の下に折り返す */
+        #top-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 14px 24px;
+            align-items: flex-start;
+        }
+
+        #oled-block {
+            flex: none;
+        }
+
+        #side-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            flex: 1 1 240px;
+            min-width: 0;
+        }
+
+        .anim-ctrl select {
+            flex: 1 1 100%;
+            min-width: 0;
+        }
+
         #scroll-area {
             display: flex;
             flex-direction: column;
             gap: 14px;
         }
 
-        /* ── 画面が広く高いとき: 画面いっぱいに使い、OLED を上に固定して、下だけスクロールさせる ──
-           幅と高さが足りない画面（下の 2 つの条件のどちらにも当たらない画面）は、ページ全体をスクロールする従来の表示のまま。
-           共通: ページ自体はスクロールさせず、各エリアが自分でスクロールする。 */
+        /* 幅 900px 未満では、OLED は最小（384px）にする */
+        @media (max-width: 899px) {
+            :root {
+                --oled-w: 384px;
+            }
+        }
+
+        /* ── 画面が広く高いとき: 画面いっぱいに使い、ページ自体はスクロールさせない ──
+           幅 1280px 以上・高さ 640px 以上のときだけ。これより狭い・低い画面は、ページ全体をスクロールする従来の表示のまま。 */
         @media (min-width: 1280px) and (min-height: 640px) {
             body {
                 height: 100vh;
@@ -450,15 +476,19 @@
                 scrollbar-color: #2a3a4a transparent;
             }
 
-            #input-col {
-                min-height: 0;
-                overflow-y: auto;
+            /* 貼り付け欄は、あいている縦いっぱいに伸ばす（エディタとして使うため） */
+            #input-col textarea {
+                flex: 1 1 auto;
+                height: auto;
+                min-height: 120px;
+                resize: none;
             }
         }
 
-        /* 広い画面（幅 1570px 以上 = 左の OLED と、ツリーを含む右の列（約 920px）が横に並べる幅）:
-           左 = OLED とアニメの操作（固定）+ 貼り付け欄、右 = zoom（固定）+ スクロールするエリア */
-        @media (min-width: 1570px) and (min-height: 640px) {
+        /* 広い画面（幅 1870px 以上 = 左に、OLED（512px の枠 588px）とその右隣（240px）が横に並べる幅）:
+           右の列は、ツリーが収まる幅（940px）に絞り、残りを左に回す。
+           左 = 上の段（OLED と右隣）+ 貼り付け欄（広く・高く使う）、右 = スクロールエリア */
+        @media (min-width: 1870px) and (min-height: 640px) {
             :root {
                 --oled-w: 512px;
             }
@@ -469,66 +499,59 @@
                 flex-wrap: nowrap;
             }
 
-            /* 幅は OLED の枠（キャンバス + 余白 76px）に合わせ、貼り付け欄もその幅にする */
             #left-col {
-                flex: 0 0 auto;
-                width: calc(var(--oled-w) + 76px);
+                flex: 1 1 auto;
                 min-width: 0;
                 min-height: 0;
-            }
-
-            #oled-block {
-                flex: none;
+                overflow-y: auto;
             }
 
             #input-col {
                 flex: 1 1 auto;
-            }
-
-            #input-col textarea {
-                flex: 1 1 auto;
-                height: auto;
-                min-height: 120px;
-                resize: none;
+                min-height: 220px;
             }
 
             #right-col {
-                flex: 1 1 auto;
+                flex: 0 0 var(--right-w);
+                min-width: 0;
                 min-height: 0;
-            }
-
-            #zoom-block {
-                flex: none;
             }
 
             #scroll-area {
                 flex: 1 1 auto;
+                border-top: none;
+                padding-top: 0;
             }
         }
 
-        /* 最大（768px）にするのは、貼り付け欄が 250px ほど残る高さがあるときだけ */
-        @media (min-width: 1830px) and (min-height: 1040px) {
+        /* 最大（768px）にするのは、左に OLED の枠（844px）と右隣（240px）が並ぶ幅（2130px 以上）と、
+           貼り付け欄が残る高さがあるときだけ */
+        @media (min-width: 2130px) and (min-height: 1040px) {
             :root {
                 --oled-w: 768px;
             }
         }
 
-        @media (min-width: 1570px) and (min-height: 640px) and (max-height: 719px) {
+        @media (min-width: 1870px) and (min-height: 640px) and (max-height: 719px) {
             :root {
                 --oled-w: 384px;
             }
         }
 
-        /* 中くらいの画面（幅 1280〜1569px）: 左は貼り付け欄のみ。右は、上に OLED と zoom を横に並べて固定し、
-           その下だけスクロールする（縦に積むと、スクロールエリアが数十 px しか残らないため）。 */
-        @media (min-width: 1280px) and (max-width: 1569px) and (min-height: 640px) {
+        /* 中くらいの画面（幅 1280〜1869px）: 左は貼り付け欄のみ（縦いっぱい）。右の上に、OLED と、その右隣
+           （アニメの操作・zoom）を固定して並べ、その下だけスクロールする。 */
+        @media (min-width: 1280px) and (max-width: 1869px) and (min-height: 640px) {
+            :root {
+                --oled-w: 512px;
+            }
+
             .layout {
                 flex: 1 1 auto;
                 min-height: 0;
                 display: grid;
-                grid-template-columns: minmax(260px, 1fr) auto auto;
+                grid-template-columns: minmax(260px, 1fr) var(--right-w);
                 grid-template-rows: auto minmax(0, 1fr);
-                grid-template-areas: "input oled zoom" "input scroll scroll";
+                grid-template-areas: "input top" "input scroll";
                 gap: 14px 24px;
             }
 
@@ -537,17 +560,14 @@
                 display: contents;
             }
 
-            #oled-block {
-                grid-area: oled;
-            }
-
-            #zoom-block {
-                grid-area: zoom;
-                align-self: start;
+            #top-row {
+                grid-area: top;
             }
 
             #input-col {
                 grid-area: input;
+                min-height: 0;
+                overflow-y: auto;
             }
 
             #scroll-area {
@@ -555,13 +575,7 @@
             }
         }
 
-        @media (min-width: 1280px) and (max-width: 1569px) and (min-height: 640px) {
-            :root {
-                --oled-w: 512px;
-            }
-        }
-
-        @media (min-width: 1280px) and (max-width: 1569px) and (min-height: 640px) and (max-height: 899px) {
+        @media (min-width: 1280px) and (max-width: 1869px) and (min-height: 640px) and (max-height: 899px) {
             :root {
                 --oled-w: 384px;
             }
@@ -578,13 +592,13 @@
 
     <div class="layout">
 
-        <!-- 左: OLED とアニメの操作（上に固定）→ 貼り付け欄 -->
+        <!-- 左: 上の段 = OLED とその右隣（アニメの操作・zoom）、下 = 貼り付け欄 -->
         <div id="left-col">
 
-            <div id="oled-block">
+            <div id="top-row">
 
                 <!-- OLED シミュレータ -->
-                <div>
+                <div id="oled-block">
                     <div class="section-label">OLED simulator</div>
                     <div class="oled-outer">
                         <div class="oled-label-row">
@@ -600,20 +614,24 @@
                     </div>
                 </div>
 
-                <!-- アニメ コントロール -->
-                <div>
-                    <div class="section-label">animation</div>
-                    <div class="anim-ctrl">
-                        <span>sprite</span>
-                        <select id="anim-sel" onchange="onAnimSelChange()"></select>
-                        <button id="btn-play" onclick="togglePlay()">▶ play</button>
-                        <span>fps</span>
-                        <input type="range" id="fps" min="1" max="16" value="4"
-                            oninput="document.getElementById('fps-val').textContent=this.value;restartTimer()">
-                        <span id="fps-val">4</span>
-                        <span id="frame-counter" style="color:#555">f0</span>
+                <!-- OLED の右隣: アニメの操作と zoom -->
+                <div id="side-panel">
+                    <div>
+                        <div class="section-label">animation</div>
+                        <div class="anim-ctrl">
+                            <select id="anim-sel" onchange="onAnimSelChange()"></select>
+                            <button id="btn-play" onclick="togglePlay()">▶ play</button>
+                            <span>fps</span>
+                            <input type="range" id="fps" min="1" max="16" value="4" oninput="restartTimer()">
+                        </div>
+                        <div id="lineage"></div>
                     </div>
-                    <div id="lineage"></div>
+
+                    <!-- ズーム比較 -->
+                    <div>
+                        <div class="section-label">zoom — 1x / 2x / 4x</div>
+                        <div id="zoom-wrap"></div>
+                    </div>
                 </div>
             </div>
 
@@ -641,15 +659,8 @@ LAMB_F = _img(
             </div>
         </div>
 
-        <!-- 右: zoom（上に固定）→ ツリー・没候補・貼り付けた候補（ここだけスクロール） -->
+        <!-- 右: ツリー・貼り付けた候補・没候補（ここだけスクロール） -->
         <div id="right-col">
-
-            <!-- ズーム比較 -->
-            <div id="zoom-block">
-                <div class="section-label">zoom — 1x / 2x / 4x</div>
-                <div id="zoom-wrap"></div>
-            </div>
-
             <div id="scroll-area">
 
                 <!-- 進化ツリー（oled_preview_data.js から自動表示） -->
@@ -995,7 +1006,6 @@ LAMB_F = _img(
             drawOLED(sprites[name]);
             buildZoom(sprites[name]);
             animFrame = 0;
-            document.getElementById('frame-counter').textContent = 'f0';
             syncAnimSelect();
             saveSel(currentKey()); // 選択をlocalStorageに保存
         }
@@ -1009,7 +1019,6 @@ LAMB_F = _img(
             drawOLED(sp);
             buildZoom(sp);
             animFrame = 0;
-            document.getElementById('frame-counter').textContent = 'F';
             syncAnimSelect();
             saveSel(currentKey());
         }
@@ -1058,7 +1067,6 @@ LAMB_F = _img(
             drawOLED(candBits[id]);
             buildZoom(candBits[id]);
             animFrame = 0;
-            document.getElementById('frame-counter').textContent = 'f0';
             syncAnimSelect();
             saveSel(currentKey());
         }
@@ -1092,14 +1100,12 @@ LAMB_F = _img(
                 // ゲーム本体: フォームの 正面 → 左 → 正面 → 右 を回す
                 animFrame = (animFrame + 1) % WALK_FRAMES.length;
                 const k = WALK_FRAMES[animFrame];
-                document.getElementById('frame-counter').textContent = k;
                 drawOLED(formBits[current.id][k]);
                 return;
             }
             const names = getAnimNames();
             if (!names.length) return;
             animFrame = (animFrame + 1) % names.length;
-            document.getElementById('frame-counter').textContent = `f${animFrame}`;
             drawOLED(sprites[names[animFrame]]);
         }
 
