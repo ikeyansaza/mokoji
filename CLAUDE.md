@@ -56,15 +56,16 @@ Display は Game の const 参照だけ受け取る read-only 設計。
 
 ```
 BABY（共通）
-  ├─ YOUNG_MOKO    → MERINO / CORRIEDALE / LINCOLN
+  ├─ YOUNG_MOKO    → CORRIEDALE / LINCOLN（MERINO は、一旦、進化先から外している）
   ├─ YOUNG_SUFFOLK → SUFFOLK / HAMPSHIRE
   └─ YOUNG_WILD   → MOUFLON / BIGHORN
 ```
 
-進化判定は `tend_feed` / `tend_pet` / `tend_shear` / `tend_polish` の傾向スコアで決まる。
-スコアは game-hour ごとに ×0.97 で減衰し、直近の世話が効く設計。
-系統別にメニュー項目が切り替わる（モコ・サフォーク系: 毛刈り、ワイルド系: 角研ぎ）。
-ベビーは系統がなく、毛刈りができない（メニューは 4 項目、毛も伸びない）。若羊から毛刈り・角研ぎが出る。
+進化判定は、進化のときの空腹（`hunger`）・幸福（`happy`）の値と乱数で決まる（重みは `Game::youngChoices` /
+`adultChoices`。満腹 → モコ系・BIGHORN、幸福 → サフォーク系・HAMPSHIRE、どちらも低い → ワイルド系）。
+世話の傾向スコア（`tend_*`）は使わない（セーブの領域だけ残し、0 を書く）。
+毛・角は成体だけ伸び、毛刈り・角研ぎ（モコ・サフォーク系: 毛刈り、ワイルド系: 角研ぎ）も成体のメニューにだけ出る。
+ベビーと若羊のメニューは 5 項目（ごはん・なでる・ゲーム・プロフ・もどる）。
 
 ### セーブ設計
 
