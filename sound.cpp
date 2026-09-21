@@ -58,6 +58,25 @@ void Sound::update(uint32_t now_ms) {
         stopTone();
         _blip_on = false;
     }
+
+    // エンディング曲: 鳴らす音が変わったときだけ、ブザーを切り替える（休符・音の切れ目は無音）
+    if (_melody.playing() && _melody.update(now_ms)) {
+        const int f = _melody.freq();
+        if (f > 0) startTone(f); else stopTone();
+    }
+}
+
+void Sound::playEnding(uint32_t now_ms) {
+    stopTone();
+    _blip_on = false;
+    _melody.start(melody::kEnding, melody::kEndingCount, now_ms);
+    update(now_ms);   // 最初の音をすぐ鳴らす
+}
+
+void Sound::stopMelody() {
+    if (!_melody.playing()) return;
+    _melody.stop();
+    stopTone();
 }
 
 void Sound::glide(int from_hz, int to_hz, int dur_ms) {

@@ -44,12 +44,15 @@ main.cpp          ハードウェア初期化・ゲームループ・ボタン�
   ├── Display     Game の状態を読み取って SSD1306 に描画
   ├── SSD1306     I2C OLED ドライバ最小実装（フレームバッファ → show() で転送）
   ├── Sound       パッシブブザーの PWM 効果音
+  ├── Melody      音符列を時刻から進める純粋なロジック（亡くなったときのエンディング曲）── Pico SDK 非依存
   └── Save        フラッシュ末尾 4KB セクタへのバイナリ保存（CRC32 検証付き）
 ```
 
 Game クラスはハードウェアに一切依存しない。Sound はコンストラクタで注入し、nullptr 許容（テスト時）。
 ミニゲームは `Screen::MINIGAME` で `JumpGame` を進め、結果（幸福度・空腹）だけ Game が反映する。ゲーム中の効果音は
 待たない `Sound::blip` / `update` を使い（`mee()` などは `sleep_ms` で待つので使わない）、`main.cpp` はゲーム中だけループを速くする。
+エンディング曲（`melody::kEnding`。約 29 秒、オリジナル）も待たずに、`Sound::playEnding` で始めて `update` で進める。墓の画面でボタンを押すと止まり、命名へ進む。
+曲の間も `main.cpp` はループを速くする。
 Display は Game の const 参照だけ受け取る read-only 設計。
 
 ### 進化システム（3 系統 × 7 品種）

@@ -120,7 +120,10 @@ int main() {
 
         // 描画。通常は毎ループ、ミニゲーム中は約 33ms ごと。
         const bool mini = game.inMiniGame();
-        if (!mini || now_ms - last_draw_ms >= MINI_DRAW_MS) {
+        // エンディング曲の再生中も、音符の切り替わりが遅れないよう、ミニゲームと同じ速さで回す
+        // （通常の周期 + 描画の時間だと、音の始まりが 70ms ほどずれる）。保存は、ミニゲームのときだけ後回しにする。
+        const bool fast = mini || sound.melodyPlaying();
+        if (!fast || now_ms - last_draw_ms >= MINI_DRAW_MS) {
             disp.draw(game);
             oled.show();
             last_draw_ms = now_ms;
@@ -140,6 +143,6 @@ int main() {
             last_save = get_absolute_time();
         }
 
-        sleep_ms(mini ? MINI_LOOP_MS : TICK_MS);
+        sleep_ms(fast ? MINI_LOOP_MS : TICK_MS);
     }
 }

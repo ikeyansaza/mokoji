@@ -18,6 +18,7 @@ add_executable(mokoji
     pet_motion.cpp
     display.cpp
     sound.cpp
+    melody.cpp
     save.cpp
     ssd1306.cpp
     font.cpp

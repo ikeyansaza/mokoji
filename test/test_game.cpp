@@ -10,6 +10,8 @@
 #include "jump_game.h"
 #include "background.h"
 #include "eat_motion.h"
+#include "melody.h"
+#include "sound.h"
 #include "pet_motion.h"
 #include "sound.h"
 #include <cassert>
@@ -1770,6 +1772,145 @@ static void test_old_save_with_tend_values_still_loads() {
     assert(out.magic == 0x4D4F4B35u);                     // MAGIC は変えない（今の羊のセーブを消さない）
 }
 
+// ---- エンディング曲（メロディの進行）-------------------------------------------
+// 音符列を、時刻から進める純粋なロジック（ブザーには触らない）。ミニゲームと同じく待たずに進めるので、
+// ループの遅れで何音分もまとめて進んでも、鳴らす音は今の時刻に合ったものになる。
+static const melody::Note kTestNotes[] = {
+    { 440, 100 },   // 0〜100 ms（最後の 30 ms は、音の切れ目として無音）
+    {   0,  50 },   // 100〜150 ms 休符
+    { 880, 100 },   // 150〜250 ms
+};
+static const int kTestNoteCount = 3;
+
+static void test_melody_player_follows_time() {
+    melody::MelodyPlayer m;
+    assert(!m.playing());
+    m.start(kTestNotes, kTestNoteCount, 1000);
+    assert(m.playing());
+    assert(m.update(1000) && m.freq() == 440);        // 鳴り始め（変化あり）
+    assert(!m.update(1060) && m.freq() == 440);       // 同じ音が続く（変化なし）
+    assert(m.update(1075) && m.freq() == 0);          // 音の切れ目（最後の 30 ms）
+    assert(!m.update(1120) && m.freq() == 0);         // 切れ目から休符へ続く（変化なし）
+    assert(m.update(1150) && m.freq() == 880);
+    assert(m.update(1225) && m.freq() == 0);          // 最後の音の切れ目
+    assert(m.playing());
+    assert(!m.update(1249) && m.freq() == 0);
+    assert(m.update(1250) == false && !m.playing());  // 終わり。無音のまま変化なし
+    assert(!m.update(2000));                          // 終わったあとは何も起きない
+}
+
+static void test_melody_player_catches_up_after_a_late_update() {
+    melody::MelodyPlayer m;
+    m.start(kTestNotes, kTestNoteCount, 0);
+    assert(m.update(0) && m.freq() == 440);
+    assert(m.update(170) && m.freq() == 880);         // 遅れて呼んでも、今の時刻の音になる
+    melody::MelodyPlayer late;
+    late.start(kTestNotes, kTestNoteCount, 0);
+    late.update(5000);
+    assert(!late.playing() && late.freq() == 0);       // 曲の長さを超えたら終わる
+}
+
+static void test_melody_player_starting_with_a_rest() {
+    // 先頭が休符の曲は、無音で始まり、休符が終わると鳴り始める
+    static const melody::Note rest_first[] = { { 0, 100 }, { 660, 100 } };
+    melody::MelodyPlayer m;
+    m.start(rest_first, 2, 10);
+    assert(!m.update(10) && m.freq() == 0);
+    assert(m.update(110) && m.freq() == 660);
+}
+
+static void test_melody_player_stop_and_restart() {
+    melody::MelodyPlayer m;
+    m.start(kTestNotes, kTestNoteCount, 0);
+    m.update(0);
+    m.stop();
+    assert(!m.playing());
+    assert(m.freq() == 0);
+    assert(!m.update(20));
+    m.start(kTestNotes, kTestNoteCount, 500);          // 止めたあと、最初から始め直せる
+    assert(m.update(500) && m.freq() == 440);
+}
+
+static void test_melody_player_handles_millisecond_counter_wraparound() {
+    melody::MelodyPlayer m;
+    m.start(kTestNotes, kTestNoteCount, 0xFFFFFFF0u);
+    m.update(0xFFFFFFF0u);
+    assert(m.update(0xFFFFFFF0u + 160u) && m.freq() == 880);   // now_ms が 32 ビットを一周してもずれない
+}
+
+// 曲のデータ（実機で聞いて直しやすいよう、性質だけを確かめる）
+static void test_ending_melody_shape() {
+    assert(melody::kEndingCount > 0);
+    uint32_t total = 0;
+    int last_pitch = 0;
+    for (int i = 0; i < melody::kEndingCount; ++i) {
+        const melody::Note& n = melody::kEnding[i];
+        assert(n.dur_ms >= 60 && n.dur_ms <= 4000);                        // 短すぎる・長すぎる音がない
+        assert(n.freq_hz == 0 || (n.freq_hz >= 300 && n.freq_hz <= 2000)); // ブザーで出しやすい音域
+        total += n.dur_ms;
+        if (n.freq_hz != 0) last_pitch = n.freq_hz;
+    }
+    assert(total >= 28000 && total <= 32000);                              // 約 30 秒
+    assert(last_pitch == 523);                                             // 主音（ド）で終わる
+}
+
+// ---- 亡くなったときの画面でエンディング曲を流す ---------------------------------
+extern int g_stub_ending_started;   // test/stubs/stub_sound.cpp
+extern int g_stub_melody_stopped;
+
+// あと 1 tick で寿命を迎える Game（寿命 10 日、9 日と 1 tick 手前）
+static Game make_about_to_die(Sound* sound) {
+    Game base(nullptr);
+    skip_naming(base);
+    GameSaveData d = base.saveData();
+    d.lifespan_days = 10;
+    d.age_ticks     = 10 * Game::TICKS_PER_DAY - 1;
+    return Game(sound, &d);
+}
+
+static void test_death_queues_the_ending_song_and_plays_after_drawing() {
+    Sound sound(0);
+    Game g = make_about_to_die(&sound);
+    g.tick();
+    assert(g.screen() == Game::Screen::GRAVE);
+    assert(g.pendingSfx() == Game::Sfx::ENDING);        // 予約するだけ（画面を切り替えたあとに鳴らす）
+    int before = g_stub_ending_started;
+    g.playPendingSfx();
+    assert(g_stub_ending_started == before + 1);
+    assert(g.pendingSfx() == Game::Sfx::NONE);
+}
+
+static void test_starvation_also_queues_the_ending_song() {
+    // 寿命でも餓死でも、同じ曲
+    Game base(nullptr);
+    skip_naming(base);
+    GameSaveData d = base.saveData();
+    d.hunger = 0;
+    Game g(nullptr, &d);
+    g.tick();
+    assert(g.screen() == Game::Screen::GRAVE);
+    assert(g.pendingSfx() == Game::Sfx::ENDING);
+}
+
+static void test_button_on_grave_screen_stops_the_song_and_starts_naming() {
+    Sound sound(0);
+    Game g = make_about_to_die(&sound);
+    g.tick();
+    g.playPendingSfx();
+    int before = g_stub_melody_stopped;
+    g.onButton(Game::Button::CENTER);
+    assert(g_stub_melody_stopped == before + 1);        // 曲を止める
+    assert(g.screen() == Game::Screen::NAMING);          // 次の命名へ進む
+}
+
+static void test_ending_song_without_sound_does_not_crash() {
+    Game g = make_about_to_die(nullptr);
+    g.tick();
+    g.playPendingSfx();
+    g.onButton(Game::Button::CENTER);
+    assert(g.screen() == Game::Screen::NAMING);
+}
+
 int main() {
     std::setbuf(stdout, nullptr);
     std::srand(42);   // 進化判定の再現性のため固定シード
@@ -1843,6 +1984,16 @@ int main() {
     RUN(test_young_evolution_follows_hunger_and_happy);
     RUN(test_young_evolution_can_pick_every_family);
     RUN(test_old_save_with_tend_values_still_loads);
+    RUN(test_melody_player_follows_time);
+    RUN(test_melody_player_catches_up_after_a_late_update);
+    RUN(test_melody_player_starting_with_a_rest);
+    RUN(test_melody_player_stop_and_restart);
+    RUN(test_melody_player_handles_millisecond_counter_wraparound);
+    RUN(test_ending_melody_shape);
+    RUN(test_death_queues_the_ending_song_and_plays_after_drawing);
+    RUN(test_starvation_also_queues_the_ending_song);
+    RUN(test_button_on_grave_screen_stops_the_song_and_starts_naming);
+    RUN(test_ending_song_without_sound_does_not_crash);
     RUN(test_profile_opens_and_any_button_closes);
     RUN(test_profile_allowed_while_sleeping);
     RUN(test_kind_names);
