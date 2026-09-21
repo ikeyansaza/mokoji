@@ -5,11 +5,11 @@
 // 羊のスプライトは正面向きの絵（左右向きの絵も左右対称）しかなく、頭を下げる絵がない。そこで、
 // 「ロールのほうへ体を傾けてうなずく」ことで食べているように見せる。ロールは、ぱくっのたびに
 // 羊のいる側から丸くかじり取られ、3 回でなくなる。動きは、ご飯の動きの経過フレーム t
-// （Game::walkTick、0〜40）だけで決まる。
+// （Game::walkTick、0〜Game::FEED_ACTION_TICKS）だけで決まる。
 namespace eat_motion {
 
 constexpr int BITE_COUNT = 3;
-constexpr int BITE_START[BITE_COUNT] = { 12, 22, 32 };  // ぱくっの開始フレーム
+constexpr int BITE_START[BITE_COUNT] = { 12, 32, 52 };  // ぱくっの開始フレーム（1 秒 = 20 フレームおき）
 constexpr int BITE_LEN   = 5;                            // ぱくっの間、うなずく
 
 // ご飯の音（Sound::mog）は、鳴り終わるまで待つ作りで、約 0.3 秒（6 フレーム）のあいだ画面が止まる。

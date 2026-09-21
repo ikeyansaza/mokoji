@@ -1393,14 +1393,17 @@ static void test_eat_bite_timing() {
     assert(bitesTaken(BITE_START[1] - 1) == 1);
     assert(bitesTaken(BITE_START[1]) == 2);
     assert(bitesTaken(BITE_START[2]) == 3);
-    assert(bitesTaken(40) == 3);
-    // ご飯の動き（40 フレーム）の中に、3 回とも収まる
-    assert(BITE_START[2] + BITE_LEN <= 40);
+    assert(bitesTaken(Game::FEED_ACTION_TICKS) == 3);
+    // ご飯の動き（Game::FEED_ACTION_TICKS）の中に、3 回とも収まる
+    assert(BITE_START[2] + BITE_LEN <= Game::FEED_ACTION_TICKS);
     // 1 回目は、ご飯の音（画面が SOUND_BLOCK_TICKS フレーム止まる）が終わって、ロールを見つける間が
     // できてから始まる。早いと、音が終わった瞬間に、いきなり食べている絵が出る。
     assert(BITE_START[0] >= SOUND_BLOCK_TICKS + LOOK_TICKS);
-    // ぱくっとぱくっの間は、体を戻す間（BITE_LEN より長い）がある
-    for (int i = 1; i < BITE_COUNT; ++i) assert(BITE_START[i] - BITE_START[i - 1] > BITE_LEN);
+    // ぱくっの間隔は 1 秒（20 フレーム）。間には、体を戻す間（BITE_LEN より長い）がある
+    for (int i = 1; i < BITE_COUNT; ++i) {
+        assert(BITE_START[i] - BITE_START[i - 1] == 20);
+        assert(BITE_START[i] - BITE_START[i - 1] > BITE_LEN);
+    }
 }
 
 static void test_eat_lean_only_while_biting() {
@@ -1473,6 +1476,26 @@ static void test_eat_bale_is_bitten_from_the_sheep_side() {
     assert(count_bale(1, -1, 0, side - 1) == count_bale(0, -1, 0, side - 1));    // 左側は無傷
 }
 
+static void test_feed_action_lasts_longer_than_other_actions() {
+    // ぱくっを 1 秒おきに 3 回するので、ご飯の動きは他の動きより長い（FEED_ACTION_TICKS）。
+    // 撫でる・毛刈りなどは、今までどおり ACTION_TICKS。
+    Game feed = make_game_with(50, 50);
+    menu_select(feed, Game::Action::FEED);
+    assert(feed.action() == Game::Action::FEED);
+    for (int i = 0; i < Game::FEED_ACTION_TICKS; ++i) feed.tick();
+    assert(feed.action() == Game::Action::FEED);         // まだ続いている
+    feed.tick();
+    assert(feed.action() == Game::Action::NONE);         // 終わった
+
+    Game pet = make_game_with(50, 50);
+    menu_select(pet, Game::Action::PET);
+    for (int i = 0; i < Game::ACTION_TICKS; ++i) pet.tick();
+    assert(pet.action() == Game::Action::PET);
+    pet.tick();
+    assert(pet.action() == Game::Action::NONE);
+    assert(Game::FEED_ACTION_TICKS > Game::ACTION_TICKS);
+}
+
 int main() {
     std::setbuf(stdout, nullptr);
     std::srand(42);   // 進化判定の再現性のため固定シード
@@ -1521,6 +1544,7 @@ int main() {
     RUN(test_eat_bale_stays_on_screen_and_beside_the_sheep);
     RUN(test_eat_bale_is_eaten_bite_by_bite);
     RUN(test_eat_bale_is_bitten_from_the_sheep_side);
+    RUN(test_feed_action_lasts_longer_than_other_actions);
     RUN(test_sun_is_fixed_in_the_sky);
     RUN(test_sun_shape_and_steady);
     RUN(test_clouds_stay_in_sky_and_drift);

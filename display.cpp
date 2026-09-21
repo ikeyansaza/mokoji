@@ -198,7 +198,7 @@ void Display::drawEatBale(int walk_x, int t) {
 void Display::drawActionFx(const Game& g) {
     if (g.action() == Game::Action::NONE) return;
     int sx = g.walkX();
-    int t  = g.walkTick();   // 0..40
+    int t  = g.walkTick();   // 0..ACTION_TICKS
 
     // 2x スケール（48x48）の羊基準。羊は (sx, 12) 〜 (sx+48, 60) を占める。
     switch (g.action()) {

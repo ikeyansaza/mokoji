@@ -44,6 +44,10 @@ public:
     };
 
     static constexpr int  MENU_COUNT = 6;
+    // アクション（撫でる・毛刈りなど）の動きの長さ（フレーム、1 フレーム約 50ms）。
+    // ご飯は、ぱくっを 1 秒おきに 3 回するので、他より長い。
+    static constexpr int  ACTION_TICKS      = 40;   // 2 秒
+    static constexpr int  FEED_ACTION_TICKS = 60;   // 3 秒
     // 系統別に「CUT/POLI」が切り替わるため、メニュー項目とラベルは Game の状態を見て返す。
     // ベビーは毛刈りができないので、メニューは 1 項目少ない（MENU_COUNT - 1）。
     int         menuCount() const;
@@ -98,7 +102,7 @@ public:
     bool      isNight()     const;
     bool      sleeping()    const { return _sleeping; }
     int       walkX()       const { return _walk_x; }
-    int       walkTick()    const { return _walk_tick; }   // アクション中のアニメ進行用 (0..40)
+    int       walkTick()    const { return _walk_tick; }   // アクション中のアニメ進行用 (0..ACTION_TICKS、ご飯は FEED_ACTION_TICKS)
     int       menuCursor()  const { return _menu_cursor; }
     int       graveCount()  const { return _grave_count; }
     const GraveRecord& grave(int i) const { return _graves[i]; }
