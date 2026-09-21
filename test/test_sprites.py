@@ -94,6 +94,31 @@ class HornedSpriteTest(unittest.TestCase):
                 )
 
 
+# 若羊（3 系統）
+YOUNG_FORMS = ["YOUNG_MOKO_F", "YOUNG_SUFFOLK_F", "YOUNG_WILD_F"]
+
+
+class YoungSpriteTest(unittest.TestCase):
+    def test_symmetric(self):
+        # 正面向きなので左右対称（対称軸は col 11）。最後の行のひづめは全フォーム共通で元から非対称なので除く。
+        # YOUNG_MOKO は row 7 が 1px 右へずれて崩れていた
+        for name in YOUNG_FORMS:
+            with self.subTest(sprite=name):
+                rows = grid(name)
+                last = max(y for y, r in enumerate(rows) if "#" in r)
+                for y in range(last):
+                    row = rows[y][:23]
+                    self.assertEqual(row, row[::-1], f"{name} row {y}: {rows[y]}")
+
+    def test_families_are_distinct(self):
+        # モコ系・サフォーク系・ワイルド系で若羊の絵が同じだと、系統の違いがわからない
+        seen = {}
+        for name in YOUNG_FORMS:
+            key = tuple(grid(name))
+            self.assertNotIn(key, seen, f"{name} が {seen.get(key)} と同じ絵")
+            seen[key] = name
+
+
 # 増毛版 → 元になる通常版
 FLUFFY_BASE = {
     "ADULT_MERINO_FLUFFY_F": "ADULT_MERINO_F",
