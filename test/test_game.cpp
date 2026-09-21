@@ -110,6 +110,7 @@ static void test_naming_manual_input() {
 
 static void test_tick_advances_age() {
     Game g(nullptr);
+    skip_naming(g);                    // 名前を付けてから、時間が進む（命名中は止まる）
     auto a0 = g.ageTicks();
     g.tick(); g.tick(); g.tick();
     assert(g.ageTicks() == a0 + 3);
@@ -117,6 +118,7 @@ static void test_tick_advances_age() {
 
 static void test_hunger_decays_after_three_hours() {
     Game g(nullptr);
+    skip_naming(g);
     int h0 = g.hunger();
     // 1 game-hour: まだ 0 のまま
     for (uint32_t i = 0; i < Game::TICKS_PER_HOUR; ++i) g.tick();
@@ -222,6 +224,10 @@ static void test_death_increments_graves_and_preserves_them() {
     // newGame の後はデフォルト名 "moko"（プリセット 0 由来）で再スタート
     assert(std::strcmp(g.name(), "moko") == 0);
     assert(g.stage() == Game::Stage::BABY);
+
+    // 墓を確認して名前を付けると、新しい子が生きはじめる（それまでは時間が止まっている）
+    g.onButton(Game::Button::CENTER);   // 墓 → 命名
+    skip_naming(g);
 
     // もう 1 回殺して、墓が累積することを確認（Python 版にあった
     // 「_new_game で graves=[] してしまうバグ」が C++ では直っていることの検証）
@@ -1234,6 +1240,58 @@ static void test_clouds_stay_in_sky_and_drift() {
     assert(differ_lower > 0);
 }
 
+// ---- 墓・命名の間は時間を止める --------------------------------------------
+// 死ぬと、新しいベビーが生まれて墓の画面になり、名前を付けるまで命名の画面が続く。その間も時間が
+// 進むと、名前を付けている間に新しい子が育ったり、進化したり、また死んだりしてしまう。
+
+// 空腹 1 の羊を作り、餓死して墓の画面になるまで進める。
+static Game make_dead_pet_at_grave() {
+    Game base(nullptr);
+    skip_naming(base);
+    GameSaveData d = base.saveData();
+    d.hunger = 1;
+    d.happy  = 100;
+    Game g(nullptr, &d);
+    for (uint32_t i = 0; i < 10 * Game::TICKS_PER_HOUR && g.screen() != Game::Screen::GRAVE; ++i) g.tick();
+    return g;
+}
+
+static void test_time_stops_while_grave_is_shown() {
+    Game g = make_dead_pet_at_grave();
+    assert(g.screen() == Game::Screen::GRAVE);
+    assert(g.graveCount() == 1);
+    const uint32_t age = g.ageTicks();
+    for (uint32_t i = 0; i < 5 * Game::TICKS_PER_DAY; ++i) g.tick();      // 墓の画面のまま放置（5 日ぶん）
+    assert(g.ageTicks() == age);                        // 新しい子の年齢が進まない
+    assert(g.stage() == Game::Stage::BABY);             // 進化しない
+    assert(g.graveCount() == 1);                        // また死んで墓が増えない
+    assert(g.screen() == Game::Screen::GRAVE);
+}
+
+static void test_time_stops_while_naming_and_resumes_after() {
+    Game g = make_dead_pet_at_grave();
+    const uint32_t age = g.ageTicks();
+    g.onButton(Game::Button::CENTER);                   // 墓 → 命名
+    assert(g.screen() == Game::Screen::NAMING);
+    for (uint32_t i = 0; i < 5 * Game::TICKS_PER_DAY; ++i) g.tick();
+    assert(g.ageTicks() == age);
+    assert(g.stage() == Game::Stage::BABY);
+    g.onButton(Game::Button::CENTER);                   // 「おまかせ」を選ぶ
+    g.onButton(Game::Button::CENTER);                   // 確定 → メイン
+    assert(g.screen() == Game::Screen::MAIN);
+    g.tick();
+    assert(g.ageTicks() == age + 1);                    // 名前を付けたら、時間が動き出す
+}
+
+static void test_time_stops_during_first_naming() {
+    // 初回起動（セーブなし）の命名画面でも、名前を付けるまで時間は進まない
+    Game g(nullptr);
+    assert(g.screen() == Game::Screen::NAMING);
+    for (uint32_t i = 0; i < 5 * Game::TICKS_PER_DAY; ++i) g.tick();
+    assert(g.ageTicks() == 0);
+    assert(g.stage() == Game::Stage::BABY);
+}
+
 int main() {
     std::setbuf(stdout, nullptr);
     std::srand(42);   // 進化判定の再現性のため固定シード
@@ -1262,6 +1320,9 @@ int main() {
     RUN(test_kana_glyph_out_of_range_is_blank);
     RUN(test_status_level);
     RUN(test_hour_of_day_and_night);
+    RUN(test_time_stops_while_grave_is_shown);
+    RUN(test_time_stops_while_naming_and_resumes_after);
+    RUN(test_time_stops_during_first_naming);
     RUN(test_grass_stays_in_the_ground_strip);
     RUN(test_grass_density_is_moderate);
     RUN(test_grass_has_no_bare_gaps);
