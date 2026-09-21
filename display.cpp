@@ -3,7 +3,6 @@
 #include "kana.h"
 #include "font.h"
 #include "eat_motion.h"
-#include "pico/rand.h"
 #include <cstdio>
 #include <cstring>
 
@@ -132,11 +131,6 @@ void Display::drawMain(const Game& g) {
     _oled->drawSprite2x(sprite, sx + lean_x, sy + lean_y);
     if (eating) drawEatBale(sx, g.walkTick());
 
-    // 毛キラキラはモコ・サフォーク系のみ（ワイルド系は wool 概念がないため非表示）。
-    // 旧 save / BABY 時代に溜まった wool が YOUNG_WILD に持ち越されてもキラキラを出さない。
-    if (g.wool() > 30 && g.family() != Game::Family::WILD) {
-        drawWool(g.wool(), sx);
-    }
     drawActionFx(g);
 
     // 表情オーバーレイは SVG 参考デザインに合わせて当面オフ（スプライト自体に
@@ -606,22 +600,6 @@ void Display::drawNaming(const Game& g) {
             _oled->drawText(buf, 0, 44);
             _oled->drawText("< > えらぶ  OK 決定", 0, 56);
             break;
-        }
-    }
-}
-
-void Display::drawWool(int wool, int sx) {
-    int density = wool / 10;
-    int dots = density * 8;
-    // 2x スケール羊（48x48 @ y=12）の中心は (sx+24, 36)。
-    // その周辺にキラキラ散らす（範囲も 2 倍に）。
-    for (int i = 0; i < dots; ++i) {
-        int dx = int(get_rand_32() & 0x3Fu) - 24;
-        int dy = int(get_rand_32() & 0x3Fu) - 24;
-        int px = sx + 24 + dx;
-        int py = 36 + dy;
-        if (px >= 0 && px < SSD1306::W && py >= 0 && py < SSD1306::H) {
-            _oled->setPixel(px, py, true);
         }
     }
 }
