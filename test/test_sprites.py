@@ -34,10 +34,6 @@ HEAD_REGION_ROWS = 6
 # YOUNG_WILD は、耳が頭から離れている（ベビーと同じ作り）ので、耳の行を含めず、角の芽と頭（頭頂 +2 行）だけを見る。
 HEAD_REGION_ROWS_OVERRIDE = {"YOUNG_WILD_F": 3}
 
-# 頭と分かれていてよい塊の数（既定は 1 = 頭と 1 つの塊）。
-# YOUNG_WILD は、角の芽が頭から離れて外へ反っているので、頭 + 左右の角の芽の 3 つ。
-EXPECTED_PARTS = {"YOUNG_WILD_F": 3}
-
 
 def grid(name):
     return sprites_gen.to_ascii(getattr(sprites, name))
@@ -75,10 +71,9 @@ class HornedSpriteTest(unittest.TestCase):
         for name in HEAD_TOP:
             with self.subTest(sprite=name):
                 comps = components(head_region(name))
-                expected = EXPECTED_PARTS.get(name, 1)
                 self.assertEqual(
-                    len(comps), expected,
-                    f"{name}: {len(comps)} 個に分断（期待は {expected} 個。細い線・浮いたピクセルあり）: "
+                    len(comps), 1,
+                    f"{name}: {len(comps)} 個に分断（細い線・浮いたピクセルあり）: "
                     + str([sorted(c)[0] for c in comps]),
                 )
 
