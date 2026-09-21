@@ -12,7 +12,7 @@ void Display::draw(const Game& g) {
     _oled->clear();
 
     // 就寝中でもメニューは開ける（寝顔を撫でる用）ので、MENU 画面のときは通常描画に回す。
-    if (g.sleeping() && g.screen() != Game::Screen::MENU) {
+    if (g.sleeping() && g.screen() != Game::Screen::MENU && g.screen() != Game::Screen::PROFILE) {
         drawSleep(g);
         return;
     }
@@ -22,6 +22,7 @@ void Display::draw(const Game& g) {
         case Game::Screen::GRAVE:  drawGrave(g);  break;
         case Game::Screen::NAMING: drawNaming(g); break;
         case Game::Screen::MINIGAME: drawMinigame(g); break;
+        case Game::Screen::PROFILE:  drawProfile(g);  break;
     }
 }
 
@@ -275,6 +276,26 @@ void Display::drawMinigame(const Game& g) {
         default:
             break;
     }
+}
+
+// プロフィール：名前・種類・日数。見るだけの画面で、どのボタンでも閉じる。
+void Display::drawProfile(const Game& g) {
+    constexpr int LABEL_X = 4;    // 見出し（漢字 2 字 = 16px）
+    constexpr int VALUE_X = 32;
+    char buf[24];
+
+    _oled->drawText("名前", LABEL_X, 4);
+    _oled->drawKana(g.nameKana(), VALUE_X, 4);
+
+    _oled->drawText("種類", LABEL_X, 20);
+    _oled->drawText(g.kindName(), VALUE_X, 20);
+
+    _oled->drawText("日数", LABEL_X, 36);
+    std::snprintf(buf, sizeof(buf), "%d日め", g.ageDays());
+    _oled->drawText(buf, VALUE_X, 36);
+
+    const char* hint = "ボタンで もどる";
+    _oled->drawText(hint, (SSD1306::W - font::textWidth(hint)) / 2, 54);
 }
 
 void Display::drawSleep(const Game& g) {
