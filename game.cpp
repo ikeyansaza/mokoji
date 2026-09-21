@@ -27,10 +27,11 @@ inline uint32_t rand8() { return get_rand_32() & 0xFFu; }
 // 重ならない幅（5 字 = 80px）までに収める。全字が ja_font.h に収録されていることは
 // test_menu_labels_renderable_and_bounded が検証する。
 const char* const kMenuLabelsDefault[Game::MENU_COUNT] = {
-    "ごはん", "なでる", "毛刈り", "ゲーム", "もどる"
+    "ごはん", "なでる", "毛刈り", "ゲーム", "プロフ", "もどる"
 };
 const Game::Action kMenuActionsDefault[Game::MENU_COUNT] = {
     Game::Action::FEED, Game::Action::PET, Game::Action::SHEAR, Game::Action::MINI,
+    Game::Action::PROFILE,
     Game::Action::NONE   // BACK
 };
 }  // namespace
@@ -65,6 +66,27 @@ Game::Action Game::menuAction(int i) const {
     int slot = menuSlot(_stage, i);
     if (slot == 2 && family() == Family::WILD) return Action::POLISH;
     return kMenuActionsDefault[slot];
+}
+
+const char* Game::kindName() const {
+    switch (_stage) {
+        case Stage::BABY:          return "ベビー";
+        case Stage::YOUNG_MOKO:    return "若羊 モコ系";
+        case Stage::YOUNG_SUFFOLK: return "若羊 サフォーク系";
+        case Stage::YOUNG_WILD:    return "若羊 ワイルド系";
+        case Stage::ADULT:
+            switch (_breed) {
+                case Breed::MERINO:     return "メリノ";
+                case Breed::CORRIEDALE: return "コリデール";
+                case Breed::LINCOLN:    return "リンカーン";
+                case Breed::SUFFOLK:    return "サフォーク";
+                case Breed::HAMPSHIRE:  return "ハンプシャー";
+                case Breed::MOUFLON:    return "ムフロン";
+                case Breed::BIGHORN:    return "ビッグホーン";
+                default:                return "ひつじ";
+            }
+    }
+    return "ひつじ";
 }
 
 const char* Game::breedSlug(Breed b) {
@@ -313,7 +335,7 @@ void Game::updateWalk() {
 void Game::onButton(Button btn) {
     // 就寝中に操作できるのは MAIN / MENU のみ（墓・命名は就寝中に到達しない想定だが念のため弾く）。
     // 行動の可否は doAction 側で判定する。
-    if (_sleeping && _screen != Screen::MAIN && _screen != Screen::MENU) return;
+    if (_sleeping && _screen != Screen::MAIN && _screen != Screen::MENU && _screen != Screen::PROFILE) return;
 
     // LEFT_LONG はバックスペース専用イベント。NAMING の入力中以外は無視。
     if (btn == Button::LEFT_LONG) {
@@ -347,6 +369,9 @@ void Game::onButton(Button btn) {
                 doAction(menuAction(_menu_cursor));
             }
             break;
+        case Screen::PROFILE:
+            _screen = Screen::MAIN;   // 見るだけの画面。どのボタンでも閉じる
+            break;
         case Screen::MINIGAME:
             if (_jump.state() == JumpGame::State::OVER) {
                 // 終了直後は連打で誤って閉じないよう、OVER_LOCK_MS はボタンを無視する
@@ -368,6 +393,12 @@ void Game::onButton(Button btn) {
 }
 
 void Game::doAction(Action act) {
+    // プロフィールは見るだけなので、就寝中でも開ける
+    if (act == Action::PROFILE) {
+        _screen = Screen::PROFILE;
+        return;
+    }
+
     // 就寝中は寝顔を撫でる（PET）だけ許可する。幸福度は起きている時より控えめに上がり、
     // 羊は起きない。傾向スコア・アニメーション・効果音も触らない（起こさないため）。
     // それ以外の行動は何も起こさない。

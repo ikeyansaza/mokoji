@@ -380,47 +380,51 @@ static Game make_stage_game(Game::Stage stage) {
 static void test_menu_labels_for_young_and_adult() {
     // 毛刈りは若羊から。ベビーのメニューには出ない。
     Game g = make_stage_game(Game::Stage::YOUNG_MOKO);
-    assert(g.menuCount() == 5);
+    assert(g.menuCount() == 6);
     assert(std::string(g.menuLabel(0)) == "ごはん");    // FEED
     assert(std::string(g.menuLabel(1)) == "なでる");    // PET
     assert(std::string(g.menuLabel(2)) == "毛刈り");    // SHEAR
     assert(std::string(g.menuLabel(3)) == "ゲーム");    // MINI
-    assert(std::string(g.menuLabel(4)) == "もどる");    // BACK
+    assert(std::string(g.menuLabel(4)) == "プロフ");    // PROFILE
+    assert(std::string(g.menuLabel(5)) == "もどる");    // BACK
     assert(g.menuAction(2) == Game::Action::SHEAR);
+    assert(g.menuAction(4) == Game::Action::PROFILE);
 }
 
 static void test_baby_menu_has_no_shear() {
     Game g(nullptr);
     skip_naming(g);
     assert(g.stage() == Game::Stage::BABY);
-    assert(g.menuCount() == 4);
+    assert(g.menuCount() == 5);
     assert(std::string(g.menuLabel(0)) == "ごはん");
     assert(std::string(g.menuLabel(1)) == "なでる");
     assert(std::string(g.menuLabel(2)) == "ゲーム");
-    assert(std::string(g.menuLabel(3)) == "もどる");
-    assert(*g.menuLabel(4) == '\0');                    // 4 項目目より先は空
+    assert(std::string(g.menuLabel(3)) == "プロフ");
+    assert(std::string(g.menuLabel(4)) == "もどる");
+    assert(*g.menuLabel(5) == '\0');                    // 5 項目目より先は空
     assert(g.menuAction(0) == Game::Action::FEED);
     assert(g.menuAction(1) == Game::Action::PET);
     assert(g.menuAction(2) == Game::Action::MINI);
-    assert(g.menuAction(3) == Game::Action::NONE);       // もどる
-    assert(g.menuAction(4) == Game::Action::NONE);
+    assert(g.menuAction(3) == Game::Action::PROFILE);
+    assert(g.menuAction(4) == Game::Action::NONE);       // もどる
+    assert(g.menuAction(5) == Game::Action::NONE);
     for (int i = 0; i < Game::MENU_COUNT; ++i) {
         assert(g.menuAction(i) != Game::Action::SHEAR);
         assert(g.menuAction(i) != Game::Action::POLISH);
     }
 }
 
-static void test_baby_menu_cursor_wraps_at_four() {
+static void test_baby_menu_cursor_wraps_at_five() {
     Game g(nullptr);
     skip_naming(g);
     g.onButton(Game::Button::CENTER);                    // メニューを開く
     assert(g.menuCursor() == 0);
     g.onButton(Game::Button::LEFT);
-    assert(g.menuCursor() == 3);                         // 先頭から左で末尾（もどる）へ
+    assert(g.menuCursor() == 4);                         // 先頭から左で末尾（もどる）へ
     g.onButton(Game::Button::RIGHT);
     assert(g.menuCursor() == 0);                         // 末尾から右で先頭へ
-    for (int i = 0; i < 3; ++i) g.onButton(Game::Button::RIGHT);
-    assert(g.menuCursor() == 3);
+    for (int i = 0; i < 4; ++i) g.onButton(Game::Button::RIGHT);
+    assert(g.menuCursor() == 4);
     g.onButton(Game::Button::CENTER);                    // 「もどる」でメインへ
     assert(g.screen() == Game::Screen::MAIN);
 }
@@ -437,15 +441,15 @@ static void test_baby_wool_does_not_grow_but_young_does() {
 }
 
 static void test_evolution_resets_menu_cursor() {
-    // 項目数が 4 → 5 に変わるので、開いたまま進化してもカーソルの意味がずれないよう先頭へ戻す
+    // 項目数が 5 → 6 に変わるので、開いたまま進化してもカーソルの意味がずれないよう先頭へ戻す
     Game g(nullptr);
     skip_naming(g);
     g.onButton(Game::Button::CENTER);
-    for (int i = 0; i < 3; ++i) g.onButton(Game::Button::RIGHT);
-    assert(g.menuCursor() == 3);
+    for (int i = 0; i < 4; ++i) g.onButton(Game::Button::RIGHT);
+    assert(g.menuCursor() == 4);
     for (uint32_t i = 0; i < 3 * Game::TICKS_PER_DAY + Game::TICKS_PER_HOUR; ++i) g.tick();
     assert(g.stage() != Game::Stage::BABY);
-    assert(g.menuCount() == 5);
+    assert(g.menuCount() == 6);
     assert(g.menuCursor() == 0);
 }
 
@@ -930,6 +934,84 @@ static void test_status_level() {
     assert(Game::statusLevel(-100) == 0);    // 大きな負でも 0（切り上げの計算だけだと負になる）
 }
 
+// ---- プロフィール --------------------------------------------------------
+static void test_profile_opens_and_any_button_closes() {
+    const Game::Button buttons[] = { Game::Button::LEFT, Game::Button::CENTER, Game::Button::RIGHT };
+    for (Game::Button b : buttons) {
+        Game g(nullptr);
+        skip_naming(g);
+        menu_select(g, Game::Action::PROFILE);
+        assert(g.screen() == Game::Screen::PROFILE);
+        g.onButton(b);
+        assert(g.screen() == Game::Screen::MAIN);
+    }
+}
+
+static void test_profile_allowed_while_sleeping() {
+    // 見るだけの画面なので、就寝中でも開ける（羊は起きない・状態も変わらない）
+    Game g = make_sleeping_game();
+    menu_select(g, Game::Action::PROFILE);
+    assert(g.screen() == Game::Screen::PROFILE);
+    assert(g.sleeping());
+    g.onButton(Game::Button::CENTER);
+    assert(g.screen() == Game::Screen::MAIN);
+    assert(g.sleeping());
+    assert(g.hunger() == 50 && g.happy() == 50);
+}
+
+// 成体を品種指定で作る。
+static Game make_adult_game(Game::Breed breed) {
+    Game base(nullptr);
+    skip_naming(base);
+    GameSaveData d = base.saveData();
+    d.stage = uint8_t(Game::Stage::ADULT);
+    d.breed = uint8_t(breed);
+    return Game(nullptr, &d);
+}
+
+static void test_kind_names() {
+    assert(std::string(make_stage_game(Game::Stage::BABY).kindName())          == "ベビー");
+    assert(std::string(make_stage_game(Game::Stage::YOUNG_MOKO).kindName())    == "若羊 モコ系");
+    assert(std::string(make_stage_game(Game::Stage::YOUNG_SUFFOLK).kindName()) == "若羊 サフォーク系");
+    assert(std::string(make_stage_game(Game::Stage::YOUNG_WILD).kindName())    == "若羊 ワイルド系");
+    assert(std::string(make_adult_game(Game::Breed::MERINO).kindName())        == "メリノ");
+    assert(std::string(make_adult_game(Game::Breed::CORRIEDALE).kindName())    == "コリデール");
+    assert(std::string(make_adult_game(Game::Breed::LINCOLN).kindName())       == "リンカーン");
+    assert(std::string(make_adult_game(Game::Breed::SUFFOLK).kindName())       == "サフォーク");
+    assert(std::string(make_adult_game(Game::Breed::HAMPSHIRE).kindName())     == "ハンプシャー");
+    assert(std::string(make_adult_game(Game::Breed::MOUFLON).kindName())       == "ムフロン");
+    assert(std::string(make_adult_game(Game::Breed::BIGHORN).kindName())       == "ビッグホーン");
+}
+
+static void test_kind_names_and_profile_labels_renderable() {
+    // 種類の名前とプロフィール画面の見出しの全字がフォントに収録されている（未収録は空白で出る）
+    const char* fixed = "名前種類日数めボタンでもどる";
+    std::string all = fixed;
+    const Game::Stage stages[] = { Game::Stage::BABY, Game::Stage::YOUNG_MOKO,
+                                   Game::Stage::YOUNG_SUFFOLK, Game::Stage::YOUNG_WILD };
+    for (Game::Stage st : stages) all += make_stage_game(st).kindName();
+    const Game::Breed breeds[] = { Game::Breed::MERINO, Game::Breed::CORRIEDALE, Game::Breed::LINCOLN,
+                                   Game::Breed::SUFFOLK, Game::Breed::HAMPSHIRE, Game::Breed::MOUFLON,
+                                   Game::Breed::BIGHORN };
+    for (Game::Breed b : breeds) all += make_adult_game(b).kindName();
+    const char* p = all.c_str();
+    while (*p) {
+        uint32_t cp = font::decodeUtf8(p);
+        assert(cp < 0x80 || font::jaGlyph(cp) != nullptr);
+    }
+}
+
+static void test_age_days_counts_from_first_day() {
+    // 生まれた日を 1 日めと数える。tick の 1 日ぶんで 2 日めになる。
+    Game g(nullptr);
+    skip_naming(g);
+    assert(g.ageDays() == 1);
+    for (uint32_t i = 0; i < Game::TICKS_PER_DAY - 1; ++i) g.tick();
+    assert(g.ageDays() == 1);                            // 1 日たつ直前
+    g.tick();
+    assert(g.ageDays() == 2);
+}
+
 int main() {
     std::setbuf(stdout, nullptr);
     std::srand(42);   // 進化判定の再現性のため固定シード
@@ -959,8 +1041,13 @@ int main() {
     RUN(test_status_level);
     RUN(test_menu_labels_for_young_and_adult);
     RUN(test_baby_menu_has_no_shear);
-    RUN(test_baby_menu_cursor_wraps_at_four);
+    RUN(test_baby_menu_cursor_wraps_at_five);
     RUN(test_baby_wool_does_not_grow_but_young_does);
+    RUN(test_profile_opens_and_any_button_closes);
+    RUN(test_profile_allowed_while_sleeping);
+    RUN(test_kind_names);
+    RUN(test_kind_names_and_profile_labels_renderable);
+    RUN(test_age_days_counts_from_first_day);
     RUN(test_evolution_resets_menu_cursor);
     RUN(test_menu_label_polish_for_wild);
     RUN(test_menu_labels_renderable_and_bounded);

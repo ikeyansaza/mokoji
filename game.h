@@ -28,9 +28,9 @@ public:
     };
     // 系統（Stage / Breed から導出可能）
     enum class Family : uint8_t { NONE, MOKO, SUFFOLK, WILD };
-    enum class Screen     : uint8_t { MAIN, MENU, GRAVE, NAMING, MINIGAME };
+    enum class Screen     : uint8_t { MAIN, MENU, GRAVE, NAMING, MINIGAME, PROFILE };
     enum class Face       : uint8_t { LEFT, FRONT, RIGHT };
-    enum class Action     : uint8_t { NONE, FEED, PET, SHEAR, POLISH, MINI };
+    enum class Action     : uint8_t { NONE, FEED, PET, SHEAR, POLISH, MINI, PROFILE };
     enum class Button     : uint8_t { LEFT, CENTER, RIGHT, LEFT_LONG };
     enum class NamingMode : uint8_t {
         SELECT_MODE,   // [PRESET] / [TYPE] のどちらかを選ぶ
@@ -39,7 +39,7 @@ public:
         INPUT_CHAR,    // 手動入力：行内の文字を選ぶ
     };
 
-    static constexpr int  MENU_COUNT = 5;
+    static constexpr int  MENU_COUNT = 6;
     // 系統別に「CUT/POLI」が切り替わるため、メニュー項目とラベルは Game の状態を見て返す。
     // ベビーは毛刈りができないので、メニューは 1 項目少ない（MENU_COUNT - 1）。
     int         menuCount() const;
@@ -83,6 +83,9 @@ public:
     const uint8_t* inputBuffer() const { return _input_buffer; }
     // 空腹・幸福（0〜100）を 5 段階のバーにする段階（0〜5）。生きている（1 以上）なら必ず 1 以上。
     static int statusLevel(int value);
+    // プロフィール画面用。種類は成長段階と品種から決まる日本語名（UTF-8）、日数は生まれた日を 1 日めと数える。
+    const char* kindName() const;
+    int       ageDays() const { return int(_age_ticks / TICKS_PER_DAY) + 1; }
     int       hunger()      const { return _hunger; }
     int       happy()       const { return _happy; }
     int       wool()        const { return _wool; }
