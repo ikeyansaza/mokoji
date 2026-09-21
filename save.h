@@ -38,10 +38,12 @@ struct GameSaveData {
     uint8_t  sleeping;
     uint8_t  lifespan_days;  // 個体寿命（10-15 日のランダム値）
     uint32_t age_ticks;
+    // 以下の 4 つ（tend_*）は、もう進化の判定に使わない。セーブ形式を変えない（今の羊のセーブを消さない）ために
+    // 領域だけ残し、保存では 0 を書き、読み込みでは無視する。
     int16_t  tend_feed;
     int16_t  tend_pet;
     int16_t  tend_shear;
-    int16_t  tend_polish;    // POLISH（角研ぎ）の世話回数
+    int16_t  tend_polish;
     uint8_t  grave_count;
     GraveRecord graves[MAX_GRAVES];
     uint32_t crc;            // 上記全フィールドを対象とした CRC32（load 時検証）

@@ -1527,6 +1527,145 @@ static void test_feed_action_lasts_longer_than_other_actions() {
     assert(Game::FEED_ACTION_TICKS > Game::ACTION_TICKS);
 }
 
+// ---- 進化の重み（空腹・幸福の値だけで決め、残りは乱数）--------------------------
+// 重みは、乱数と切り離した純粋関数にしてあるので、テストで直接確かめる。
+static void test_young_choice_weights() {
+    Game::EvoChoice c[3];
+    Game::youngChoices(100, 100, c);             // 満腹で幸福
+    assert(c[0].stage == Game::Stage::YOUNG_MOKO    && c[0].weight == 90);   // 50 + 100 * 40%
+    assert(c[1].stage == Game::Stage::YOUNG_SUFFOLK && c[1].weight == 90);   // 50 + 100 * 40%
+    assert(c[2].stage == Game::Stage::YOUNG_WILD    && c[2].weight == 50);   // 50 + (200 - 200) * 20%
+    Game::youngChoices(0, 0, c);                 // 空腹で不幸: ワイルド系が一番出やすい
+    assert(c[0].weight == 50 && c[1].weight == 50 && c[2].weight == 90);
+    Game::youngChoices(100, 0, c);               // 満腹だけ: モコ系
+    assert(c[0].weight == 90 && c[1].weight == 50 && c[2].weight == 70);
+    Game::youngChoices(0, 100, c);               // 幸福だけ: サフォーク系
+    assert(c[0].weight == 50 && c[1].weight == 90 && c[2].weight == 70);
+    for (int i = 0; i < 3; ++i) assert(c[i].breed == Game::Breed::NONE);
+}
+
+static void test_choice_weights_stay_in_range_for_out_of_range_values() {
+    // 範囲外の値（負・100 超）でも、重みが基本値（50）より小さくならず、上限を超えない
+    Game::EvoChoice c[3];
+    Game::youngChoices(-30, 250, c);
+    for (int i = 0; i < 3; ++i) assert(c[i].weight >= 50 && c[i].weight <= 90);
+    Game::EvoChoice a[2];
+    assert(Game::adultChoices(Game::Stage::YOUNG_SUFFOLK, 300, -10, a) == 2);
+    for (int i = 0; i < 2; ++i) assert(a[i].weight >= 50 && a[i].weight <= 100);
+}
+
+static void test_adult_choice_weights() {
+    Game::EvoChoice c[2];
+    // モコ系: CORRIEDALE / LINCOLN を半々（MERINO は抽選に入らない）
+    assert(Game::adultChoices(Game::Stage::YOUNG_MOKO, 100, 100, c) == 2);
+    assert(c[0].breed == Game::Breed::CORRIEDALE && c[0].weight == 50);
+    assert(c[1].breed == Game::Breed::LINCOLN    && c[1].weight == 50);
+    for (int i = 0; i < 2; ++i) assert(c[i].stage == Game::Stage::ADULT);
+    // サフォーク系: 幸福なほど HAMPSHIRE が出やすい
+    assert(Game::adultChoices(Game::Stage::YOUNG_SUFFOLK, 100, 100, c) == 2);
+    assert(c[0].breed == Game::Breed::SUFFOLK   && c[0].weight == 50);
+    assert(c[1].breed == Game::Breed::HAMPSHIRE && c[1].weight == 100);      // 50 + 100 * 50%
+    Game::adultChoices(Game::Stage::YOUNG_SUFFOLK, 100, 0, c);
+    assert(c[1].weight == 50);
+    // ワイルド系: 満腹なほど BIGHORN が出やすい
+    assert(Game::adultChoices(Game::Stage::YOUNG_WILD, 100, 100, c) == 2);
+    assert(c[0].breed == Game::Breed::MOUFLON && c[0].weight == 50);
+    assert(c[1].breed == Game::Breed::BIGHORN && c[1].weight == 100);
+    Game::adultChoices(Game::Stage::YOUNG_WILD, 0, 100, c);
+    assert(c[1].weight == 50);
+    // 若羊でなければ、選択肢はない
+    assert(Game::adultChoices(Game::Stage::BABY, 50, 50, c) == 0);
+    assert(Game::adultChoices(Game::Stage::ADULT, 50, 50, c) == 0);
+}
+
+static void test_pick_weighted_uses_the_whole_roll() {
+    Game::EvoChoice c[3] = {
+        { Game::Stage::YOUNG_MOKO,    Game::Breed::NONE, 30 },
+        { Game::Stage::YOUNG_SUFFOLK, Game::Breed::NONE, 20 },
+        { Game::Stage::YOUNG_WILD,    Game::Breed::NONE, 50 },
+    };
+    assert(Game::pickWeighted(c, 3, 0)   == 0);
+    assert(Game::pickWeighted(c, 3, 29)  == 0);
+    assert(Game::pickWeighted(c, 3, 30)  == 1);
+    assert(Game::pickWeighted(c, 3, 49)  == 1);
+    assert(Game::pickWeighted(c, 3, 50)  == 2);
+    assert(Game::pickWeighted(c, 3, 99)  == 2);
+    assert(Game::pickWeighted(c, 3, 100) == 0);                     // roll は、合計で割った余りで使う
+    assert(Game::pickWeighted(c, 3, 4000000099u) == 2);             // 32 ビットの乱数の全範囲を使う
+    Game::EvoChoice zero[2] = {
+        { Game::Stage::ADULT, Game::Breed::MOUFLON, 0 },
+        { Game::Stage::ADULT, Game::Breed::BIGHORN, 0 },
+    };
+    assert(Game::pickWeighted(zero, 2, 12345) == 0);                // 合計が 0 なら 0 番目
+}
+
+// ---- 進化の結果 ----------------------------------------------------------------
+static Game make_evolving(Game::Stage stage, uint32_t days, int hunger, int happy) {
+    Game base(nullptr);
+    skip_naming(base);
+    GameSaveData d = base.saveData();
+    d.stage     = uint8_t(stage);
+    d.hunger    = uint8_t(hunger);
+    d.happy     = uint8_t(happy);
+    d.age_ticks = days * Game::TICKS_PER_DAY - 1;
+    return Game(nullptr, &d);
+}
+
+static void test_adult_evolution_never_picks_merino() {
+    int corriedale = 0, lincoln = 0;
+    for (int i = 0; i < 300; ++i) {
+        Game g = make_evolving(Game::Stage::YOUNG_MOKO, 7, 100, 100);
+        g.tick();
+        assert(g.stage() == Game::Stage::ADULT);
+        assert(g.breed() != Game::Breed::MERINO);
+        if (g.breed() == Game::Breed::CORRIEDALE) ++corriedale;
+        if (g.breed() == Game::Breed::LINCOLN)    ++lincoln;
+    }
+    assert(corriedale > 0 && lincoln > 0);                // 2 品種とも出る（乱数で決まる）
+    assert(corriedale + lincoln == 300);
+}
+
+static void test_young_evolution_follows_hunger_and_happy() {
+    // 空腹・不幸なほどワイルド系が出やすく、満腹・幸福なほど出にくい（重み 88 対 50 なので、300 回なら十分に差が出る）
+    int wild_low = 0, wild_high = 0;
+    for (int i = 0; i < 300; ++i) {
+        Game low = make_evolving(Game::Stage::BABY, 3, 5, 5);
+        low.tick();
+        if (low.stage() == Game::Stage::YOUNG_WILD) ++wild_low;
+        Game high = make_evolving(Game::Stage::BABY, 3, 100, 100);
+        high.tick();
+        if (high.stage() == Game::Stage::YOUNG_WILD) ++wild_high;
+    }
+    assert(wild_low > wild_high + 30);
+}
+
+static void test_young_evolution_can_pick_every_family() {
+    // 抽選が乱数の全範囲を使うこと（0〜127 だけだと、最後の選択肢が選ばれにくい）
+    int count[3] = {0, 0, 0};
+    for (int i = 0; i < 600; ++i) {
+        Game g = make_evolving(Game::Stage::BABY, 3, 100, 100);
+        g.tick();
+        if (g.stage() == Game::Stage::YOUNG_MOKO)    ++count[0];
+        if (g.stage() == Game::Stage::YOUNG_SUFFOLK) ++count[1];
+        if (g.stage() == Game::Stage::YOUNG_WILD)    ++count[2];
+    }
+    assert(count[0] + count[1] + count[2] == 600);
+    assert(count[2] > 60);                                 // ワイルド系（重み 50 / 合計 230）も、ちゃんと出る
+}
+
+// ---- セーブ形式は変えない -------------------------------------------------------
+static void test_old_save_with_tend_values_still_loads() {
+    Game base(nullptr);
+    skip_naming(base);
+    GameSaveData d = base.saveData();
+    d.tend_feed = 20; d.tend_pet = 30; d.tend_shear = 40; d.tend_polish = 50;   // 古いセーブの値
+    Game g(nullptr, &d);
+    assert(g.stage() == base.stage());                    // 読み込める
+    GameSaveData out = g.saveData();
+    assert(out.tend_feed == 0 && out.tend_pet == 0 && out.tend_shear == 0 && out.tend_polish == 0);
+    assert(out.magic == 0x4D4F4B35u);                     // MAGIC は変えない（今の羊のセーブを消さない）
+}
+
 int main() {
     std::setbuf(stdout, nullptr);
     std::srand(42);   // 進化判定の再現性のため固定シード
@@ -1586,6 +1725,14 @@ int main() {
     RUN(test_action_sounds_are_deferred);
     RUN(test_no_sound_when_action_has_no_effect);
     RUN(test_evolution_sound_is_deferred);
+    RUN(test_young_choice_weights);
+    RUN(test_choice_weights_stay_in_range_for_out_of_range_values);
+    RUN(test_adult_choice_weights);
+    RUN(test_pick_weighted_uses_the_whole_roll);
+    RUN(test_adult_evolution_never_picks_merino);
+    RUN(test_young_evolution_follows_hunger_and_happy);
+    RUN(test_young_evolution_can_pick_every_family);
+    RUN(test_old_save_with_tend_values_still_loads);
     RUN(test_profile_opens_and_any_button_closes);
     RUN(test_profile_allowed_while_sleeping);
     RUN(test_kind_names);

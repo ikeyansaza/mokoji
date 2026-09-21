@@ -20,8 +20,15 @@ constexpr int      START_HOUR     = 8;                   // 起動時のゲー�
 constexpr int      LIFESPAN_MIN   = 10;                  // 自然死 寿命下限（リアル日）
 constexpr int      LIFESPAN_RANGE = 6;                   // [10, 15] のレンジ
 
-inline uint32_t rand7() { return get_rand_32() & 0x7Fu; }
-inline uint32_t rand8() { return get_rand_32() & 0xFFu; }
+// 進化の重み: 基本 50 に、空腹・幸福の値（0〜100）に応じた分を足す（係数はパーセント）。
+constexpr int EVO_BASE_WEIGHT         = 50;
+constexpr int EVO_MOKO_HUNGER_PCT     = 40;   // モコ系: 満腹なほど
+constexpr int EVO_SUFFOLK_HAPPY_PCT   = 40;   // サフォーク系: 幸福なほど
+constexpr int EVO_WILD_LOW_PCT        = 20;   // ワイルド系: 空腹・不幸なほど（(200 − hunger − happy) に掛ける）
+constexpr int EVO_HAMPSHIRE_HAPPY_PCT = 50;   // HAMPSHIRE: 幸福なほど
+constexpr int EVO_BIGHORN_HUNGER_PCT  = 50;   // BIGHORN: 満腹なほど
+
+int clampPercent(int v) { return v < 0 ? 0 : (v > 100 ? 100 : v); }
 
 // メニューラベル（UTF-8）。選択中の 1 項目を 2 倍（16px/字）で中央に出すので、左右の < > と
 // 重ならない幅（5 字 = 80px）までに収める。全字が ja_font.h に収録されていることは
@@ -75,6 +82,50 @@ Game::Action Game::menuAction(int i) const {
     int slot = menuSlot(_stage, i);
     if (slot == 2 && family() == Family::WILD) return Action::POLISH;
     return kMenuActionsDefault[slot];
+}
+
+void Game::youngChoices(int hunger, int happy, EvoChoice out[3]) {
+    const int h = clampPercent(hunger);
+    const int p = clampPercent(happy);
+    out[0] = { Stage::YOUNG_MOKO,    Breed::NONE, EVO_BASE_WEIGHT + h * EVO_MOKO_HUNGER_PCT / 100 };
+    out[1] = { Stage::YOUNG_SUFFOLK, Breed::NONE, EVO_BASE_WEIGHT + p * EVO_SUFFOLK_HAPPY_PCT / 100 };
+    // ワイルド系は「放置気味」（空腹・不幸なほど出やすい）。満腹・幸福の合計が低いほど、重みが増える
+    out[2] = { Stage::YOUNG_WILD,    Breed::NONE, EVO_BASE_WEIGHT + (200 - h - p) * EVO_WILD_LOW_PCT / 100 };
+}
+
+int Game::adultChoices(Stage young, int hunger, int happy, EvoChoice out[2]) {
+    const int h = clampPercent(hunger);
+    const int p = clampPercent(happy);
+    switch (young) {
+        case Stage::YOUNG_MOKO:
+            // MERINO は、一旦、抽選に入れない（絵と Breed は残してある）
+            out[0] = { Stage::ADULT, Breed::CORRIEDALE, EVO_BASE_WEIGHT };
+            out[1] = { Stage::ADULT, Breed::LINCOLN,    EVO_BASE_WEIGHT };
+            return 2;
+        case Stage::YOUNG_SUFFOLK:
+            out[0] = { Stage::ADULT, Breed::SUFFOLK,   EVO_BASE_WEIGHT };
+            out[1] = { Stage::ADULT, Breed::HAMPSHIRE, EVO_BASE_WEIGHT + p * EVO_HAMPSHIRE_HAPPY_PCT / 100 };
+            return 2;
+        case Stage::YOUNG_WILD:
+            out[0] = { Stage::ADULT, Breed::MOUFLON, EVO_BASE_WEIGHT };
+            out[1] = { Stage::ADULT, Breed::BIGHORN, EVO_BASE_WEIGHT + h * EVO_BIGHORN_HUNGER_PCT / 100 };
+            return 2;
+        default:
+            return 0;
+    }
+}
+
+int Game::pickWeighted(const EvoChoice* choices, int n, uint32_t roll) {
+    int total = 0;
+    for (int i = 0; i < n; ++i) total += choices[i].weight;
+    if (total <= 0) return 0;
+    // 32 ビットの乱数をそのまま使う（127 までしか使わないと、後ろの選択肢が選ばれにくくなる）
+    int r = int(roll % uint32_t(total));
+    for (int i = 0; i < n; ++i) {
+        if (r < choices[i].weight) return i;
+        r -= choices[i].weight;
+    }
+    return n - 1;
 }
 
 const char* Game::kindName() const {
@@ -167,10 +218,6 @@ Game::Game(Sound* sound, const GameSaveData* data)
         _wool        = data->wool;
         _horn        = data->horn;
         _age_ticks   = data->age_ticks;
-        _tend_feed   = data->tend_feed;
-        _tend_pet    = data->tend_pet;
-        _tend_shear  = data->tend_shear;
-        _tend_polish = data->tend_polish;
         _sleeping    = data->sleeping != 0;
         _grave_count = data->grave_count;
         if (_grave_count > MAX_GRAVES) _grave_count = MAX_GRAVES;
@@ -204,10 +251,6 @@ void Game::newGame() {
     _wool        = 0;
     _horn        = 0;
     _age_ticks   = 0;
-    _tend_feed   = 0;
-    _tend_pet    = 0;
-    _tend_shear  = 0;
-    _tend_polish = 0;
     _sleeping    = false;
     _lifespan_days = uint8_t(LIFESPAN_MIN + (get_rand_32() % LIFESPAN_RANGE));  // 10-15 日
     _dirty      = true;   // 新規開始 / 死亡からの再スタート時は最初の保存を促す
@@ -250,12 +293,6 @@ void Game::tick() {
         } else if (_sleeping) {
             _sleepy = std::max(0, _sleepy - 2);
         }
-
-        // 傾向スコアは ×0.97/hour で減衰（直近の世話が進化判定で効きやすくなる）
-        _tend_feed   = (_tend_feed   * 97) / 100;
-        _tend_pet    = (_tend_pet    * 97) / 100;
-        _tend_shear  = (_tend_shear  * 97) / 100;
-        _tend_polish = (_tend_polish * 97) / 100;
 
         _dirty = true;
     }
@@ -426,14 +463,12 @@ void Game::doAction(Action act) {
     switch (act) {
         case Action::FEED:
             _hunger = std::min(100, _hunger + 30);
-            _tend_feed += 1;
             _action = Action::FEED;
             _dirty = true;
             queueSfx(Sfx::MOG);
             break;
         case Action::PET:
             _happy = std::min(100, _happy + 20);
-            _tend_pet += 1;
             _action = Action::PET;
             _dirty = true;
             queueSfx(Sfx::PET);
@@ -443,7 +478,6 @@ void Game::doAction(Action act) {
             if (_wool > 10) {
                 _wool = 0;
                 _happy = std::min(100, _happy + 10);
-                _tend_shear += 1;
                 _action = Action::SHEAR;
                 _dirty = true;
                 queueSfx(Sfx::JOKI);
@@ -454,7 +488,6 @@ void Game::doAction(Action act) {
             if (_horn > 10) {
                 _horn = 0;
                 _happy = std::min(100, _happy + 10);
-                _tend_polish += 1;
                 _action = Action::POLISH;
                 _dirty = true;
                 queueSfx(Sfx::JOKI);   // 暫定で同じ音
@@ -511,7 +544,7 @@ void Game::playMiniSounds(uint8_t ev) {
 }
 
 // スコアに応じて幸福度が上がり、運動でお腹が減る。ミニゲームだけで餓死しないよう空腹は 1 で止める。
-// 進化の傾向スコア（tend_*）には反映しない。
+// 幸福度は上がる（幸福度は進化の重みに使う値でもある）。
 void Game::applyMiniReward() {
     _mini_reward   = std::min(MINI_REWARD_MAX, _jump.score() * MINI_REWARD_PER_SHEEP);
     _happy         = std::min(100, _happy + _mini_reward);
@@ -520,23 +553,10 @@ void Game::applyMiniReward() {
 }
 
 void Game::evolveYoung() {
-    // BABY → 3 系統。世話パターンで重み付け：
-    //   モコ系：feed + pet 多め（健康重視）
-    //   サフォーク系：pet 多め（人懐っこい）
-    //   ワイルド系：放置気味（feed/pet 少なめ → 残りに割り振り）
-    int total = _tend_feed + _tend_pet + _tend_shear + 1;
-    int moko_w    = 50 + (_tend_feed + _tend_pet) * 30 / total;
-    int suffolk_w = 50 + _tend_pet * 40 / total;
-    int wild_w    = 50;   // ベース確率、世話少ないと相対的に上がる
-
-    int roll = rand7() % (moko_w + suffolk_w + wild_w);
-    if (roll < moko_w) {
-        _stage = Stage::YOUNG_MOKO;
-    } else if (roll < moko_w + suffolk_w) {
-        _stage = Stage::YOUNG_SUFFOLK;
-    } else {
-        _stage = Stage::YOUNG_WILD;
-    }
+    // BABY → 3 系統。進化のときの空腹・幸福の値で重み付けし、残りは乱数（重みは youngChoices を参照）。
+    EvoChoice c[3];
+    youngChoices(_hunger, _happy, c);
+    _stage = c[pickWeighted(c, 3, get_rand_32())].stage;
     _wool = 0;
     _horn = 0;   // 若羊は毛・角を伸ばさない。ベビーの間に溜まった分（古いセーブ）は持ち越さない
     _dirty = true;
@@ -544,30 +564,10 @@ void Game::evolveYoung() {
 }
 
 void Game::evolveAdult() {
-    int total = _tend_feed + _tend_pet + _tend_shear + _tend_polish + 1;
-
-    if (_stage == Stage::YOUNG_MOKO) {
-        // モコ系：feed 多めで MERINO（毛量重視）、pet 多めで CORRIEDALE、shear 多めで LINCOLN（長毛）
-        int merino_w     = 50 + _tend_feed  * 50 / total;
-        int corriedale_w = 50 + _tend_pet   * 50 / total;
-        int lincoln_w    = 50 + _tend_shear * 50 / total;
-        int roll = rand8() % (merino_w + corriedale_w + lincoln_w);
-        if (roll < merino_w)                           _breed = Breed::MERINO;
-        else if (roll < merino_w + corriedale_w)       _breed = Breed::CORRIEDALE;
-        else                                           _breed = Breed::LINCOLN;
-    } else if (_stage == Stage::YOUNG_SUFFOLK) {
-        // サフォーク系：pet 多めで SUFFOLK（人懐っこい）、feed+pet で HAMPSHIRE（強化版）
-        int suffolk_w   = 50 + _tend_pet * 50 / total;
-        int hampshire_w = 50 + (_tend_feed + _tend_pet) * 30 / total;
-        int roll = rand8() % (suffolk_w + hampshire_w);
-        _breed = (roll < suffolk_w) ? Breed::SUFFOLK : Breed::HAMPSHIRE;
-    } else {
-        // ワイルド系：polish 多めで BIGHORN（角ケア重視）、放置で MOUFLON（小型）
-        int mouflon_w = 50;
-        int bighorn_w = 50 + _tend_polish * 60 / total;
-        int roll = rand8() % (mouflon_w + bighorn_w);
-        _breed = (roll < mouflon_w) ? Breed::MOUFLON : Breed::BIGHORN;
-    }
+    // 若羊 → 品種。進化のときの空腹・幸福の値で重み付けし、残りは乱数（重みは adultChoices を参照）。
+    EvoChoice c[2];
+    const int n = adultChoices(_stage, _hunger, _happy, c);
+    _breed = c[pickWeighted(c, n, get_rand_32())].breed;
 
     _stage = Stage::ADULT;
     _wool = 0;
@@ -612,10 +612,6 @@ GameSaveData Game::saveData() const {
     d.horn        = uint8_t(_horn);
     d.sleeping    = _sleeping ? 1 : 0;
     d.age_ticks   = _age_ticks;
-    d.tend_feed   = int16_t(_tend_feed);
-    d.tend_pet    = int16_t(_tend_pet);
-    d.tend_shear  = int16_t(_tend_shear);
-    d.tend_polish = int16_t(_tend_polish);
     d.grave_count = uint8_t(_grave_count);
     d.lifespan_days = _lifespan_days;
     std::memcpy(d.name_kana, _name_kana, sizeof(d.name_kana));
