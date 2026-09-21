@@ -1081,13 +1081,14 @@ static void test_action_sounds_are_deferred() {
     menu_select(g, Game::Action::PET);
     assert(g.pendingSfx() == Game::Sfx::NONE);         // 撫でるは、その場では鳴らさない（音は動きの進行に合わせる）
 
+    // 毛刈り・角研ぎは、始めた瞬間には鳴らさない（音は動きに合わせて、はさみが閉じるたび・こするたびに鳴る）
     Game moko = make_adult_with_growth(Game::Breed::CORRIEDALE);
     menu_select(moko, Game::Action::SHEAR);
-    assert(moko.pendingSfx() == Game::Sfx::JOKI);
+    assert(moko.pendingSfx() == Game::Sfx::NONE);
 
     Game wild = make_adult_with_growth(Game::Breed::MOUFLON);
     menu_select(wild, Game::Action::POLISH);
-    assert(wild.pendingSfx() == Game::Sfx::JOKI);
+    assert(wild.pendingSfx() == Game::Sfx::NONE);
 }
 
 static void test_no_sound_when_action_has_no_effect() {
@@ -1543,7 +1544,7 @@ static void test_feed_action_lasts_longer_than_other_actions() {
     assert(shear.action() == Game::Action::NONE);
 
     assert(Game::FEED_ACTION_TICKS > Game::ACTION_TICKS);
-    assert(Game::TRIM_ACTION_TICKS > Game::ACTION_TICKS);   // 毛刈り・角研ぎは、音のあとに動きが始まるので長い
+    assert(Game::TRIM_ACTION_TICKS > Game::ACTION_TICKS);   // 毛刈り・角研ぎは、往復・こするのを繰り返すので長い
 }
 
 // ---- 撫でる：ハートと弾み -------------------------------------------------------
@@ -2002,8 +2003,8 @@ static void test_debug_cycle_treats_old_merino_as_corriedale() {
 // ---- 毛刈り：はさみが体を 2 往復して、毛の束が落ちる ------------------------------
 static void test_shear_scissors_sweep_the_body_twice() {
     using namespace shear_motion;
-    // 音（画面が止まる間）が終わってから出て、2 回目が終わる（CUT_TICK）まで見える
-    assert(PASS_START[0] >= SOUND_BLOCK_TICKS);
+    // 2 回目が終わる（CUT_TICK）まで見える
+    assert(PASS_START[0] >= 2);                                 // 動き始める前に、毛のある羊の絵が 1 フレーム以上出る
     assert(!clipperShown(PASS_START[0] - 1));
     assert(clipperShown(PASS_START[0]));
     assert(clipperShown(CUT_TICK - 1));
@@ -2095,7 +2096,7 @@ static void test_shear_shapes_stay_inside_their_boxes() {
 // ---- 角研ぎ：木の幹に角をこすりつけて、火花が散る ---------------------------------
 static void test_polish_rubs_between_the_sound_and_the_filed_tick() {
     using namespace polish_motion;
-    assert(RUB_START >= SOUND_BLOCK_TICKS);                    // 音が終わってから、こすり始める
+    assert(RUB_START >= 2);                                    // こする前に、角の長い羊の絵が 1 フレーム以上出る
     assert(!isRubbing(RUB_START - 1) && isRubbing(RUB_START));
     assert(isRubbing(RUB_END - 1) && !isRubbing(RUB_END));
     assert(!filed(FILED_TICK - 1) && filed(FILED_TICK));       // こすり終わったら、角が短くなる
@@ -2201,6 +2202,64 @@ static void test_trim_actions_last_trim_action_ticks() {
     assert(g.action() == Game::Action::NONE);
 }
 
+// ---- 毛刈り・角研ぎの音は、動きに合わせて鳴る ------------------------------------
+static void test_shear_snips_when_the_blades_close() {
+    using namespace shear_motion;
+    // はさみが閉じる瞬間（刃が閉じた絵の最初のフレーム）に、1 回ずつ「ジョキ」
+    int snips = 0;
+    for (int t = 0; t <= Game::TRIM_ACTION_TICKS; ++t) {
+        if (!isSnip(t)) continue;
+        ++snips;
+        assert(clipperShown(t));                               // はさみが見えているときだけ
+        assert(!clipperOpen(t) && clipperOpen(t - 1));         // 刃が開いた状態から閉じた瞬間
+    }
+    assert(snips >= 5);                                        // 2 往復で、何度も刈る
+}
+
+static void test_shear_sound_is_queued_along_the_motion() {
+    using namespace shear_motion;
+    Game g = make_adult_with_growth(Game::Breed::CORRIEDALE);
+    menu_select(g, Game::Action::SHEAR);
+    int snips = 0, cuts = 0;
+    for (int k = 1; k <= Game::TRIM_ACTION_TICKS; ++k) {
+        g.playPendingSfx();                                    // 前のフレームの予約を空にする
+        g.tick();
+        assert(g.walkTick() == k);
+        if (isSnip(k)) {
+            assert(g.pendingSfx() == Game::Sfx::SNIP);
+            ++snips;
+        } else if (k == CUT_TICK) {
+            assert(g.pendingSfx() == Game::Sfx::JOKI);         // 刈り終えたところで、低い「ジョキッ」
+            ++cuts;
+        } else {
+            assert(g.pendingSfx() == Game::Sfx::NONE);         // ほかのフレームは鳴らさない
+        }
+    }
+    assert(snips >= 5 && cuts == 1);
+}
+
+static void test_polish_scrapes_each_time_the_horn_presses() {
+    using namespace polish_motion;
+    int strokes = 0;
+    for (int t = 0; t <= Game::TRIM_ACTION_TICKS; ++t) {
+        if (!isRubStroke(t)) continue;
+        ++strokes;
+        assert(isPressed(t) && !isPressed(t - 1));             // 幹に押しつけた瞬間
+    }
+    assert(strokes >= 5);
+
+    Game g = make_adult_with_growth(Game::Breed::MOUFLON);
+    menu_select(g, Game::Action::POLISH);
+    int scrapes = 0;
+    for (int k = 1; k <= Game::TRIM_ACTION_TICKS; ++k) {
+        g.playPendingSfx();
+        g.tick();
+        assert(g.pendingSfx() == (isRubStroke(k) ? Game::Sfx::RUB : Game::Sfx::NONE));
+        if (isRubStroke(k)) ++scrapes;
+    }
+    assert(scrapes == strokes);
+}
+
 int main() {
     std::setbuf(stdout, nullptr);
     std::srand(42);   // 進化判定の再現性のため固定シード
@@ -2256,6 +2315,9 @@ int main() {
     RUN(test_eat_bale_is_bitten_from_the_sheep_side);
     RUN(test_feed_action_lasts_longer_than_other_actions);
     RUN(test_shear_scissors_sweep_the_body_twice);
+    RUN(test_shear_snips_when_the_blades_close);
+    RUN(test_shear_sound_is_queued_along_the_motion);
+    RUN(test_polish_scrapes_each_time_the_horn_presses);
     RUN(test_shear_wool_is_cut_after_the_second_pass);
     RUN(test_shear_tufts_fall_and_pile_up_on_the_ground);
     RUN(test_shear_shapes_stay_inside_their_boxes);

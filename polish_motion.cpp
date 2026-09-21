@@ -33,6 +33,10 @@ bool isPressed(int t) {
     return isRubbing(t) && ((t / 2) & 1) == 0;
 }
 
+bool isRubStroke(int t) {
+    return isPressed(t) && !isPressed(t - 1);
+}
+
 bool filed(int t) {
     return t >= FILED_TICK;
 }

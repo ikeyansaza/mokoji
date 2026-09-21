@@ -8,12 +8,12 @@
 // 羊の絵が、角の長い絵から通常の絵に切り替わる。
 namespace polish_motion {
 
-// 角研ぎの音は、毛刈りと同じ Sound::joki（暫定）で、約 0.56 秒（11 フレーム）のあいだ画面が止まる。
-// 止まっている間に時間が過ぎるので、こすり始めは、音が終わってから。
-constexpr int SOUND_BLOCK_TICKS = 12;
+// 音は動きに合わせて鳴らす。幹へ押しつけるたびに、短い「ゴシッ」（Sound::rub、約 40ms 待つ）。
+// 以前は、毛刈りの音（約 0.56 秒、その間画面が止まる）を動きの開始と同時に鳴らしていたので、
+// こすり始める前に音が終わって、こする間は無音だった。
 
-constexpr int RUB_START  = 14;
-constexpr int RUB_END    = 38;      // ここでこすり終わる
+constexpr int RUB_START  = 4;
+constexpr int RUB_END    = 28;      // ここでこすり終わる
 constexpr int FILED_TICK = RUB_END; // 角が短くなる（絵が切り替わる）
 
 constexpr int LEAN_PX = 4;          // 幹へ押しつける量。戻すときは、LEAN_PX - 2
@@ -29,7 +29,8 @@ int  direction(int walk_x);              // +1：右に幹  /  -1：左に幹
 int  trunkLeft(int walk_x);              // 幹の左端の x。羊の 2 倍スプライト（48px 幅）の外に置く
 
 bool isRubbing(int t);                   // こする間か
-bool isPressed(int t);                   // 幹へ押しつけている瞬間か（こする間の 2 フレームおき）
+bool isPressed(int t);                   // 幹へ押しつけている間か（こする間の 2 フレームおき）
+bool isRubStroke(int t);                 // 幹へ押しつけた瞬間か（「ゴシッ」を鳴らすフレーム）
 bool filed(int t);                       // 角を研ぎ終えたか（羊の絵を通常に切り替える）
 
 // 幹の向き dir へ体を傾ける量。こする間だけ、押しつける・戻すを繰り返す。それ以外は 0。

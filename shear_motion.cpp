@@ -65,6 +65,10 @@ bool woolCut(int t) {
     return t >= CUT_TICK;
 }
 
+bool isSnip(int t) {
+    return clipperShown(t) && !clipperOpen(t) && clipperOpen(t - 1);
+}
+
 bool tuft(int i, int walk_x, int t, int* x, int* y) {
     if (i < 0 || i >= TUFT_COUNT || t < TUFT_SPAWN[i]) return false;
     // はさみの刃の下から落ち始める。地面に着いたら、そこに積もる。

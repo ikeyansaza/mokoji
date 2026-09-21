@@ -48,7 +48,7 @@ public:
     // 待つ音（sleep_ms で鳴り終わるまで止まる音）。ボタン処理の中で鳴らすと、鳴り終わるまで画面の
     // 描画が遅れ、メニューが表示されたまま音が聞こえる。そこで Game は予約するだけにして、
     // main が描画のあとに playPendingSfx() で鳴らす。ミニゲームの音（blip）は待たないので、その場で鳴らす。
-    enum class Sfx        : uint8_t { NONE, MOG, MEE, JOKI, HAPPY, ENDING };
+    enum class Sfx        : uint8_t { NONE, MOG, MEE, JOKI, SNIP, RUB, HAPPY, ENDING };
     enum class Button     : uint8_t { LEFT, CENTER, RIGHT, LEFT_LONG };
     enum class NamingMode : uint8_t {
         SELECT_MODE,   // [PRESET] / [TYPE] のどちらかを選ぶ
@@ -62,8 +62,8 @@ public:
     // ご飯は、ぱくっを 1 秒おきに 3 回するので、他より長い。
     static constexpr int  ACTION_TICKS      = 40;   // 2 秒
     static constexpr int  FEED_ACTION_TICKS = 60;   // 3 秒
-    // 毛刈り・角研ぎも、音（約 0.56 秒、画面が止まる）のあとに動きが始まるので、同じ長さ。
-    static constexpr int  TRIM_ACTION_TICKS = 60;   // 3 秒
+    // 毛刈り（はさみが 2 往復）・角研ぎ（幹にこする）は、ご飯より短い。音は動きに合わせて鳴る。
+    static constexpr int  TRIM_ACTION_TICKS = 48;   // 2.4 秒
     // 系統別に「CUT/POLI」が切り替わるため、メニュー項目とラベルは Game の状態を見て返す。
     // 毛刈り・角研ぎは成体だけ。ベビーと若羊は、メニューが 1 項目少ない（MENU_COUNT - 1）。
     int         menuCount() const;
@@ -154,6 +154,8 @@ private:
     void       applyMiniReward();
     Sfx        _pending_sfx = Sfx::NONE;
     void       petCues();      // 撫でるの動きの進行に合わせて、音を出す
+    void       shearCues();    // 毛刈りの動きの進行に合わせて、音を予約する
+    void       polishCues();   // 角研ぎの動きの進行に合わせて、音を予約する
     void       queueSfx(Sfx s) { _pending_sfx = s; }   // 後から予約したものを優先する
     void       playMiniSounds(uint8_t ev);
     char       _name[8];                  // romaji 表示用

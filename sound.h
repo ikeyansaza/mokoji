@@ -10,7 +10,9 @@ public:
 
     void mee();    // メェ〜（羊の鳴き声。震わせて伸ばし、最後に持ち上げる）
     void mog();    // もぐもぐ（餌やり）
-    void joki();   // ジョキジョキ（毛刈り）
+    void joki();   // ジョキッ（毛刈りの刈り終わり。低めで少し長い）
+    void snip();   // ジョキ（はさみが閉じるたび。短い）
+    void rub();    // ゴシッ（角を幹にこするたび。低くて短い）
     void happy();  // 喜び（イベント）
 
     void setVolume(int vol_0_to_10);

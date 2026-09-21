@@ -7,12 +7,12 @@
 // 2 回目が終わったところ（CUT_TICK）で、羊の絵が、毛のふさふさな絵から通常の絵に切り替わる。
 namespace shear_motion {
 
-// 毛刈りの音（Sound::joki）は、鳴り終わるまで待つ作りで、約 0.56 秒（11 フレーム）のあいだ画面が止まる。
-// 止まっている間に時間が過ぎるので、はさみは、音が終わってから出す。
-constexpr int SOUND_BLOCK_TICKS = 12;
+// 音は動きに合わせて鳴らす。はさみが閉じるたびに短い「ジョキ」（Sound::snip、約 35ms 待つ）、刈り終えた
+// ところ（CUT_TICK）で低い「ジョキッ」（Sound::joki）。以前は、4 回のジョキを 1 つの音（約 0.56 秒、その間
+// 画面が止まる）として動きの開始と同時に鳴らしていたので、はさみが出る前に音が終わって、はさみが動く間は無音だった。
 
 constexpr int PASS_COUNT    = 2;
-constexpr int PASS_START[PASS_COUNT] = { 14, 28 };   // はさみが動き始めるフレーム
+constexpr int PASS_START[PASS_COUNT] = { 4, 18 };     // はさみが動き始めるフレーム
 constexpr int PASS_LEN      = 14;                    // 1 回の長さ
 constexpr int CUT_TICK      = PASS_START[1] + PASS_LEN;   // 2 回目が終わる。毛が消えて、はさみも消える
 
@@ -22,7 +22,7 @@ constexpr int PASS_X0 = 8;                           // 羊の左端からの x�
 constexpr int PASS_X1 = 34;                          // ここまで動く（羊の絵の幅 48px の中に収まる）
 
 constexpr int TUFT_COUNT  = 6;
-constexpr int TUFT_SPAWN[TUFT_COUNT] = { 16, 20, 24, 30, 34, 38 };   // 毛の束が落ち始めるフレーム
+constexpr int TUFT_SPAWN[TUFT_COUNT] = { 6, 10, 14, 20, 24, 28 };   // 毛の束が落ち始めるフレーム
 constexpr int TUFT_W = 5, TUFT_H = 4;
 constexpr int TUFT_FALL_PX = 2;                      // 1 フレームに落ちる量
 constexpr int GROUND_Y     = 55;                     // 毛の束が積もる地面の最下行（草の帯 y=56〜 の真上）
@@ -32,6 +32,7 @@ int  clipperX(int walk_x, int t);                    // はさみの左端の x
 int  clipperY(int t);                                // はさみの上端の y
 bool clipperOpen(int t);                             // 刃が開いているか（2 フレームごとに開閉）
 bool woolCut(int t);                                 // 毛が刈り取られたか（羊の絵を通常に切り替える）
+bool isSnip(int t);                                  // はさみが閉じた瞬間か（「ジョキ」を鳴らすフレーム）
 
 // 毛の束 i。落ちている・積もっているあいだ true を返し、左上の座標を x, y に書く。まだ落ち始めていなければ false。
 bool tuft(int i, int walk_x, int t, int* x, int* y);

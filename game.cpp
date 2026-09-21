@@ -2,6 +2,8 @@
 #include "sound.h"
 #include "kana.h"
 #include "pet_motion.h"
+#include "shear_motion.h"
+#include "polish_motion.h"
 #include "pico/rand.h"
 #include <cstring>
 #include <algorithm>
@@ -333,6 +335,8 @@ void Game::updateWalk() {
     if (_action != Action::NONE) {
         _face = Face::FRONT;
         if (_action == Action::PET) petCues();
+        if (_action == Action::SHEAR) shearCues();
+        if (_action == Action::POLISH) polishCues();
         int limit = ACTION_TICKS;
         if (_action == Action::FEED) limit = FEED_ACTION_TICKS;
         if (_action == Action::SHEAR || _action == Action::POLISH) limit = TRIM_ACTION_TICKS;
@@ -490,7 +494,7 @@ void Game::doAction(Action act) {
                 _happy = std::min(100, _happy + 10);
                 _action = Action::SHEAR;
                 _dirty = true;
-                queueSfx(Sfx::JOKI);
+                // 音は動きに合わせて鳴らす（shearCues）
             }
             break;
         case Action::POLISH:
@@ -501,7 +505,7 @@ void Game::doAction(Action act) {
                 _happy = std::min(100, _happy + 10);
                 _action = Action::POLISH;
                 _dirty = true;
-                queueSfx(Sfx::JOKI);   // 暫定で同じ音
+                // 音は動きに合わせて鳴らす（polishCues）
             }
             break;
         case Action::MINI:
@@ -523,6 +527,18 @@ void Game::petCues() {
     if (_walk_tick == pet_motion::BLEAT_TICK) queueSfx(Sfx::MEE);
 }
 
+// 毛刈りの動き（shear_motion）の進行に合わせて、音を予約する。はさみが閉じるたびに短い「ジョキ」、
+// 刈り終えたところで低い「ジョキッ」（待つ音なので、描画のあとに鳴らす）。
+void Game::shearCues() {
+    if (shear_motion::isSnip(_walk_tick)) queueSfx(Sfx::SNIP);
+    else if (_walk_tick == shear_motion::CUT_TICK) queueSfx(Sfx::JOKI);
+}
+
+// 角研ぎの動き（polish_motion）の進行に合わせて、幹に押しつけるたびに「ゴシッ」を予約する。
+void Game::polishCues() {
+    if (polish_motion::isRubStroke(_walk_tick)) queueSfx(Sfx::RUB);
+}
+
 void Game::playPendingSfx() {
     Sfx s = _pending_sfx;
     _pending_sfx = Sfx::NONE;
@@ -531,6 +547,8 @@ void Game::playPendingSfx() {
         case Sfx::MOG:   _sound->mog();   break;
         case Sfx::MEE:   _sound->mee();   break;
         case Sfx::JOKI:  _sound->joki();  break;
+        case Sfx::SNIP:  _sound->snip();  break;
+        case Sfx::RUB:   _sound->rub();   break;
         case Sfx::HAPPY: _sound->happy(); break;
         case Sfx::ENDING: _sound->playEnding(_now_ms); break;   // 待たずに鳴らし始める（進めるのは main の sound.update）
         case Sfx::NONE:  break;
