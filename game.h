@@ -48,7 +48,7 @@ public:
     // 待つ音（sleep_ms で鳴り終わるまで止まる音）。ボタン処理の中で鳴らすと、鳴り終わるまで画面の
     // 描画が遅れ、メニューが表示されたまま音が聞こえる。そこで Game は予約するだけにして、
     // main が描画のあとに playPendingSfx() で鳴らす。ミニゲームの音（blip）は待たないので、その場で鳴らす。
-    enum class Sfx        : uint8_t { NONE, MOG, MEE, JOKI, HAPPY };
+    enum class Sfx        : uint8_t { NONE, MOG, MEE, JOKI, HAPPY, ENDING };
     enum class Button     : uint8_t { LEFT, CENTER, RIGHT, LEFT_LONG };
     enum class NamingMode : uint8_t {
         SELECT_MODE,   // [PRESET] / [TYPE] のどちらかを選ぶ

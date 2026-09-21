@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include "pico/types.h"
+#include "melody.h"
 
 // パッシブブザー効果音（PWM 制御）。MicroPython 版の Sound クラス相当。
 class Sound {
@@ -17,7 +18,13 @@ public:
     // 非ブロッキングの短い音。鳴らし始めるだけで待たない。止めるのは update() が、now_ms を
     // 見て行う（ミニゲーム中は入力を止められないので、待つ mee() などは使わない）。
     void blip(int freq_hz, int dur_ms, uint32_t now_ms);
-    void update(uint32_t now_ms);
+    void update(uint32_t now_ms);   // blip の終了と、エンディング曲の進行を、時刻に合わせて進める
+
+    // エンディング曲（亡くなったときの画面）。鳴らし始めるだけで待たず、進めるのは update()。
+    // 曲は約 29 秒で、ボタンで stopMelody() すると止まる。
+    void playEnding(uint32_t now_ms);
+    void stopMelody();
+    bool melodyPlaying() const { return _melody.playing(); }
 
 private:
     uint _pin;
@@ -27,6 +34,7 @@ private:
 
     bool     _blip_on      = false;
     uint32_t _blip_stop_ms = 0;
+    melody::MelodyPlayer _melody;
 
     void noise(int dur_ms, int lo_hz, int hi_hz);   // 周波数をランダムに飛ばしたザラザラ音（待つ）
     // 音を止めずに周波数を動かす（待つ）。続けて呼ぶと 1 つの音として続く。止めるのは呼び出し側の stopTone()。

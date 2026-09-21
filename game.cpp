@@ -436,7 +436,8 @@ void Game::onButton(Button btn) {
             }
             break;
         case Screen::GRAVE:
-            // 墓を確認したら新しい子に名前を付ける
+            // 墓を確認したら、エンディング曲を止めて、新しい子に名前を付ける
+            if (_sound) _sound->stopMelody();
             startNaming();
             break;
         case Screen::NAMING:
@@ -524,6 +525,7 @@ void Game::playPendingSfx() {
         case Sfx::MEE:   _sound->mee();   break;
         case Sfx::JOKI:  _sound->joki();  break;
         case Sfx::HAPPY: _sound->happy(); break;
+        case Sfx::ENDING: _sound->playEnding(_now_ms); break;   // 待たずに鳴らし始める（進めるのは main の sound.update）
         case Sfx::NONE:  break;
     }
 }
@@ -607,6 +609,7 @@ void Game::die(DeathCause cause) {
     }
     newGame();              // 名前・ステータスをリセット（_graves は保持）
     _screen = Screen::GRAVE;
+    queueSfx(Sfx::ENDING);  // 寿命でも餓死でも同じ曲。墓の画面を描いたあとに、main が鳴らし始める
 }
 
 GameSaveData Game::saveData() const {
