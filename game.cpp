@@ -35,16 +35,30 @@ const Game::Action kMenuActionsDefault[Game::MENU_COUNT] = {
 };
 }  // namespace
 
+namespace {
+// 表示位置 i を、既定のメニュー定義（kMenu*Default）の添字に直す。
+// ベビーは毛刈り（添字 2）を出さないので、2 番目以降を 1 つ後ろへずらす。
+int menuSlot(Game::Stage stage, int i) {
+    return (stage == Game::Stage::BABY && i >= 2) ? i + 1 : i;
+}
+}  // namespace
+
+int Game::menuCount() const {
+    return (_stage == Stage::BABY) ? MENU_COUNT - 1 : MENU_COUNT;
+}
+
 const char* Game::menuLabel(int i) const {
-    if (i < 0 || i >= MENU_COUNT) return "";
-    if (i == 2 && family() == Family::WILD) return "角研ぎ";
-    return kMenuLabelsDefault[i];
+    if (i < 0 || i >= menuCount()) return "";
+    int slot = menuSlot(_stage, i);
+    if (slot == 2 && family() == Family::WILD) return "角研ぎ";
+    return kMenuLabelsDefault[slot];
 }
 
 Game::Action Game::menuAction(int i) const {
-    if (i < 0 || i >= MENU_COUNT) return Action::NONE;
-    if (i == 2 && family() == Family::WILD) return Action::POLISH;
-    return kMenuActionsDefault[i];
+    if (i < 0 || i >= menuCount()) return Action::NONE;
+    int slot = menuSlot(_stage, i);
+    if (slot == 2 && family() == Family::WILD) return Action::POLISH;
+    return kMenuActionsDefault[slot];
 }
 
 const char* Game::breedSlug(Breed b) {
@@ -182,8 +196,10 @@ void Game::tick() {
         int adult_grow = (_stage == Stage::ADULT) ? 2 : 1;
         if (fam == Family::WILD) {
             _horn = std::min(100, _horn + adult_grow);
-        } else {
-            // BABY (NONE) / YOUNG_MOKO / YOUNG_SUFFOLK / ADULT MOKO/SUFFOLK
+        } else if (_stage != Stage::BABY) {
+            // YOUNG_MOKO / YOUNG_SUFFOLK / ADULT MOKO/SUFFOLK。
+            // ベビーは毛刈りができない（メニューに出ない）ので伸ばさない。
+            // 伸ばすと、若羊に進化した時点で毛が溜まったままになる。
             _wool = std::min(100, _wool + adult_grow);
         }
 
@@ -320,9 +336,9 @@ void Game::onButton(Button btn) {
             break;
         case Screen::MENU:
             if (btn == Button::LEFT) {
-                _menu_cursor = (_menu_cursor - 1 + MENU_COUNT) % MENU_COUNT;
+                _menu_cursor = (_menu_cursor - 1 + menuCount()) % menuCount();
             } else if (btn == Button::RIGHT) {
-                _menu_cursor = (_menu_cursor + 1) % MENU_COUNT;
+                _menu_cursor = (_menu_cursor + 1) % menuCount();
             } else if (btn == Button::CENTER) {
                 _screen = Screen::MAIN;              // doAction が画面を変える（ミニゲーム）ことがあるので先に戻す
                 doAction(menuAction(_menu_cursor));
@@ -462,6 +478,7 @@ void Game::evolveYoung() {
         _stage = Stage::YOUNG_WILD;
         _wool = 0;   // ワイルド系は wool 概念がない、BABY 時代の蓄積をリセット
     }
+    _menu_cursor = 0;   // メニューの項目数が 4 → 5 に変わるので、開いたままでもカーソルの意味がずれないよう先頭へ
     _dirty = true;
     if (_sound) _sound->happy();
 }

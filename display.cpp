@@ -167,8 +167,10 @@ void Display::drawMenu(const Game& g) {
 
     // 下段：ページドット。現在位置は 4x4 の塗り、それ以外は 2x2。
     constexpr int dot_pitch = 10;
-    for (int i = 0; i < Game::MENU_COUNT; ++i) {
-        int cx = SSD1306::W / 2 + (i - Game::MENU_COUNT / 2) * dot_pitch;
+    const int count = g.menuCount();
+    for (int i = 0; i < count; ++i) {
+        // 項目数が偶数（ベビーは 4）でも左右対称に並ぶよう、中心からの距離を半ピッチ単位で計算する
+        int cx = SSD1306::W / 2 + (2 * i - (count - 1)) * dot_pitch / 2;
         if (i == cursor) {
             _oled->fillRect(cx - 2, 52, 4, 4, true);
         } else {

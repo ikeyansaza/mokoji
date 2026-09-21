@@ -277,10 +277,11 @@ static void test_save_and_load_round_trip() {
 // 就寝中の Game を作る（テスト用ヘルパ）。
 // tick で就寝させると数日分かかるため、セーブデータ経由で睡眠状態を注入する。
 // 空腹・幸福を中途半端な値、wool を刈れる量にして、行動が実効化されたら差が出るようにしておく。
-static Game make_sleeping_game() {
+static Game make_sleeping_game(Game::Stage stage = Game::Stage::BABY) {
     Game base(nullptr);
     skip_naming(base);
     GameSaveData d = base.saveData();
+    d.stage    = uint8_t(stage);
     d.sleeping = 1;
     d.sleepy   = 90;
     d.hunger   = 50;
@@ -320,7 +321,8 @@ static void test_sleeping_other_actions_are_rejected() {
         Game::Action::FEED, Game::Action::SHEAR, Game::Action::MINI,
     };
     for (Game::Action act : rejected) {
-        Game g = make_sleeping_game();
+        // 毛刈りはベビーのメニューに無いので、若羊で確認する
+        Game g = make_sleeping_game(act == Game::Action::SHEAR ? Game::Stage::YOUNG_MOKO : Game::Stage::BABY);
         menu_select(g, act);
         assert(g.hunger() == 50);
         assert(g.happy()  == 50);
@@ -365,15 +367,86 @@ static void test_kana_glyph_out_of_range_is_blank() {
     assert(!glyph_has_pixel(font::kanaGlyph(kana::COUNT)));
 }
 
+// 指定した成長段階の通常の Game を作る（セーブデータ経由）。
+static Game make_stage_game(Game::Stage stage) {
+    Game base(nullptr);
+    skip_naming(base);
+    GameSaveData d = base.saveData();
+    d.stage = uint8_t(stage);
+    return Game(nullptr, &d);
+}
+
 // メニューラベル（UTF-8）。
-static void test_menu_labels() {
-    Game g(nullptr);
-    skip_naming(g);
+static void test_menu_labels_for_young_and_adult() {
+    // 毛刈りは若羊から。ベビーのメニューには出ない。
+    Game g = make_stage_game(Game::Stage::YOUNG_MOKO);
+    assert(g.menuCount() == 5);
     assert(std::string(g.menuLabel(0)) == "ごはん");    // FEED
     assert(std::string(g.menuLabel(1)) == "なでる");    // PET
     assert(std::string(g.menuLabel(2)) == "毛刈り");    // SHEAR
     assert(std::string(g.menuLabel(3)) == "ゲーム");    // MINI
     assert(std::string(g.menuLabel(4)) == "もどる");    // BACK
+    assert(g.menuAction(2) == Game::Action::SHEAR);
+}
+
+static void test_baby_menu_has_no_shear() {
+    Game g(nullptr);
+    skip_naming(g);
+    assert(g.stage() == Game::Stage::BABY);
+    assert(g.menuCount() == 4);
+    assert(std::string(g.menuLabel(0)) == "ごはん");
+    assert(std::string(g.menuLabel(1)) == "なでる");
+    assert(std::string(g.menuLabel(2)) == "ゲーム");
+    assert(std::string(g.menuLabel(3)) == "もどる");
+    assert(*g.menuLabel(4) == '\0');                    // 4 項目目より先は空
+    assert(g.menuAction(0) == Game::Action::FEED);
+    assert(g.menuAction(1) == Game::Action::PET);
+    assert(g.menuAction(2) == Game::Action::MINI);
+    assert(g.menuAction(3) == Game::Action::NONE);       // もどる
+    assert(g.menuAction(4) == Game::Action::NONE);
+    for (int i = 0; i < Game::MENU_COUNT; ++i) {
+        assert(g.menuAction(i) != Game::Action::SHEAR);
+        assert(g.menuAction(i) != Game::Action::POLISH);
+    }
+}
+
+static void test_baby_menu_cursor_wraps_at_four() {
+    Game g(nullptr);
+    skip_naming(g);
+    g.onButton(Game::Button::CENTER);                    // メニューを開く
+    assert(g.menuCursor() == 0);
+    g.onButton(Game::Button::LEFT);
+    assert(g.menuCursor() == 3);                         // 先頭から左で末尾（もどる）へ
+    g.onButton(Game::Button::RIGHT);
+    assert(g.menuCursor() == 0);                         // 末尾から右で先頭へ
+    for (int i = 0; i < 3; ++i) g.onButton(Game::Button::RIGHT);
+    assert(g.menuCursor() == 3);
+    g.onButton(Game::Button::CENTER);                    // 「もどる」でメインへ
+    assert(g.screen() == Game::Screen::MAIN);
+}
+
+static void test_baby_wool_does_not_grow_but_young_does() {
+    // ベビーは毛刈りできないので、毛は伸ばさない（若羊に進化した時点で毛が溜まっていないように）
+    Game baby(nullptr);
+    skip_naming(baby);
+    for (uint32_t i = 0; i < 10 * Game::TICKS_PER_HOUR; ++i) baby.tick();
+    assert(baby.wool() == 0);
+    Game young = make_stage_game(Game::Stage::YOUNG_MOKO);
+    for (uint32_t i = 0; i < 10 * Game::TICKS_PER_HOUR; ++i) young.tick();
+    assert(young.wool() == 10);                          // 若羊は 1 時間に +1
+}
+
+static void test_evolution_resets_menu_cursor() {
+    // 項目数が 4 → 5 に変わるので、開いたまま進化してもカーソルの意味がずれないよう先頭へ戻す
+    Game g(nullptr);
+    skip_naming(g);
+    g.onButton(Game::Button::CENTER);
+    for (int i = 0; i < 3; ++i) g.onButton(Game::Button::RIGHT);
+    assert(g.menuCursor() == 3);
+    for (uint32_t i = 0; i < 3 * Game::TICKS_PER_DAY + Game::TICKS_PER_HOUR; ++i) g.tick();
+    assert(g.stage() != Game::Stage::BABY);
+    assert(g.menuCount() == 5);
+    assert(g.menuCursor() == 0);
 }
 
 static void test_menu_label_polish_for_wild() {
@@ -394,11 +467,12 @@ static void test_menu_labels_renderable_and_bounded() {
     GameSaveData d = base.saveData();
     d.stage = uint8_t(Game::Stage::YOUNG_WILD);
     Game wild(nullptr, &d);
-    Game moko(nullptr);
-    skip_naming(moko);
+    Game baby(nullptr);
+    skip_naming(baby);
+    Game moko = make_stage_game(Game::Stage::YOUNG_MOKO);
 
-    for (const Game* g : { &moko, &wild }) {
-        for (int i = 0; i < Game::MENU_COUNT; ++i) {
+    for (const Game* g : { &baby, &moko, &wild }) {
+        for (int i = 0; i < g->menuCount(); ++i) {
             const char* label = g->menuLabel(i);
             assert(*label != '\0');
             assert(font::textWidth(label) <= 40);          // 2 倍で 80px まで（矢印間は 92px）
@@ -408,8 +482,8 @@ static void test_menu_labels_renderable_and_bounded() {
                 assert(cp >= 0x80 && font::jaGlyph(cp) != nullptr);
             }
         }
+        assert(*g->menuLabel(g->menuCount()) == '\0');     // 範囲外は空ラベル
     }
-    assert(*moko.menuLabel(Game::MENU_COUNT) == '\0');      // 範囲外は空ラベル
 }
 
 // UTF-8 デコード / 日本語グリフ / 表示幅。
@@ -866,7 +940,11 @@ int main() {
     RUN(test_kana_glyph_all_distinct);
     RUN(test_kana_glyph_matches_misaki_a);
     RUN(test_kana_glyph_out_of_range_is_blank);
-    RUN(test_menu_labels);
+    RUN(test_menu_labels_for_young_and_adult);
+    RUN(test_baby_menu_has_no_shear);
+    RUN(test_baby_menu_cursor_wraps_at_four);
+    RUN(test_baby_wool_does_not_grow_but_young_does);
+    RUN(test_evolution_resets_menu_cursor);
     RUN(test_menu_label_polish_for_wild);
     RUN(test_menu_labels_renderable_and_bounded);
     RUN(test_utf8_decode);

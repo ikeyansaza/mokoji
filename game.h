@@ -41,6 +41,8 @@ public:
 
     static constexpr int  MENU_COUNT = 5;
     // 系統別に「CUT/POLI」が切り替わるため、メニュー項目とラベルは Game の状態を見て返す。
+    // ベビーは毛刈りができないので、メニューは 1 項目少ない（MENU_COUNT - 1）。
+    int         menuCount() const;
     Action      menuAction(int i) const;
     const char* menuLabel(int i)  const;   // UTF-8
     static const char*    breedSlug(Breed b);        // 短縮表記（4-5 文字）
