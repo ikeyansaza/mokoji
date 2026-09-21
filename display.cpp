@@ -455,13 +455,9 @@ const uint8_t (*Display::selectSprite(const Game& g, Game::Face face))[3] {
             L = YOUNG_WILD_L; F = YOUNG_WILD_F; R = YOUNG_WILD_R; break;
         case Game::Stage::ADULT:
             switch (g.breed()) {
+                // MERINO は進化先から外して、絵も持たない（docs/sprite-candidates/merino/ に没候補として残してある）。
+                // 古いセーブに MERINO の羊がいても表示できるよう、CORRIEDALE の絵で代用する。
                 case Game::Breed::MERINO:
-                    if (fluffy) {
-                        L = ADULT_MERINO_FLUFFY_L; F = ADULT_MERINO_FLUFFY_F; R = ADULT_MERINO_FLUFFY_R;
-                    } else {
-                        L = ADULT_MERINO_L; F = ADULT_MERINO_F; R = ADULT_MERINO_R;
-                    }
-                    break;
                 case Game::Breed::CORRIEDALE:
                     if (fluffy) {
                         L = ADULT_CORRIEDALE_FLUFFY_L; F = ADULT_CORRIEDALE_FLUFFY_F; R = ADULT_CORRIEDALE_FLUFFY_R;

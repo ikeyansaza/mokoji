@@ -30,7 +30,6 @@ SPRITE_NAMES = [
     "YOUNG_SUFFOLK_F", "YOUNG_SUFFOLK_L", "YOUNG_SUFFOLK_R",
     "YOUNG_WILD_F",    "YOUNG_WILD_L",    "YOUNG_WILD_R",
     # Stage 3: ADULT（6 品種）
-    "ADULT_MERINO_F",     "ADULT_MERINO_L",     "ADULT_MERINO_R",
     "ADULT_CORRIEDALE_F", "ADULT_CORRIEDALE_L", "ADULT_CORRIEDALE_R",
     "ADULT_LINCOLN_F",    "ADULT_LINCOLN_L",    "ADULT_LINCOLN_R",
     "ADULT_SUFFOLK_F",    "ADULT_SUFFOLK_L",    "ADULT_SUFFOLK_R",
@@ -38,7 +37,6 @@ SPRITE_NAMES = [
     "ADULT_MOUFLON_F",    "ADULT_MOUFLON_L",    "ADULT_MOUFLON_R",
     "ADULT_BIGHORN_F",    "ADULT_BIGHORN_L",    "ADULT_BIGHORN_R",
     # Stage 4: SPECIAL（増毛 5 + 角長 2）
-    "ADULT_MERINO_FLUFFY_F",     "ADULT_MERINO_FLUFFY_L",     "ADULT_MERINO_FLUFFY_R",
     "ADULT_CORRIEDALE_FLUFFY_F", "ADULT_CORRIEDALE_FLUFFY_L", "ADULT_CORRIEDALE_FLUFFY_R",
     "ADULT_LINCOLN_FLUFFY_F",    "ADULT_LINCOLN_FLUFFY_L",    "ADULT_LINCOLN_FLUFFY_R",
     "ADULT_SUFFOLK_FLUFFY_F",    "ADULT_SUFFOLK_FLUFFY_L",    "ADULT_SUFFOLK_FLUFFY_R",
@@ -110,7 +108,6 @@ FAMILIES = [
 
 # 品種 → (系統, 表示名)。game.h の Breed に対応
 BREEDS = {
-    "MERINO":     ("MOKO",    "メリノ"),
     "CORRIEDALE": ("MOKO",    "コリデール"),
     "LINCOLN":    ("MOKO",    "リンカーン"),
     "SUFFOLK":    ("SUFFOLK", "サフォーク"),
@@ -188,6 +185,7 @@ TOPICS = [
     ("fluffy", "増毛"),
     ("horn", "角（ワイルド系）"),
     ("hampshire", "ハンプシャー"),
+    ("merino", "メリノ（進化先から外した）"),
 ]
 
 
