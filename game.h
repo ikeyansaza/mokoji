@@ -81,6 +81,8 @@ public:
     int        inputRow()     const { return _input_row; }
     int        inputLen()     const { return _input_len; }
     const uint8_t* inputBuffer() const { return _input_buffer; }
+    // 空腹・幸福（0〜100）を 5 段階のバーにする段階（0〜5）。生きている（1 以上）なら必ず 1 以上。
+    static int statusLevel(int value);
     int       hunger()      const { return _hunger; }
     int       happy()       const { return _happy; }
     int       wool()        const { return _wool; }
@@ -88,8 +90,6 @@ public:
     int       walkX()       const { return _walk_x; }
     int       walkTick()    const { return _walk_tick; }   // アクション中のアニメ進行用 (0..40)
     int       menuCursor()  const { return _menu_cursor; }
-    bool      leftHeld()    const { return _left_held; }   // 押下中はステータス overlay を出す
-    void      setLeftHeld(bool h) { _left_held = h; }      // main 側で毎フレーム反映
     int       graveCount()  const { return _grave_count; }
     const GraveRecord& grave(int i) const { return _graves[i]; }
     uint32_t  ageTicks()    const { return _age_ticks; }   // テスト用
@@ -152,7 +152,6 @@ private:
 
     Screen     _screen;
     int        _menu_cursor;
-    bool       _left_held;            // LEFT ボタンを押下中か（ステータス表示用）
 
     GraveRecord _graves[MAX_GRAVES];
     int         _grave_count;

@@ -111,9 +111,6 @@ int main() {
         poll_button(PIN_BTN_CENTER, bC, Game::Button::CENTER, false, Game::Button::CENTER);
         poll_button(PIN_BTN_RIGHT,  bR, Game::Button::RIGHT,  false, Game::Button::RIGHT);
 
-        // メイン画面のステータス overlay 用に、LEFT 押下中フラグを毎フレーム反映
-        game.setLeftHeld(bL.pressed);
-
         // ゲーム全体の tick（年齢・空腹など）は、ループの速さに関係なく経過時間で TICK_MS ごと。
         while (now_ms - last_tick_ms >= TICK_MS) {
             game.tick();
