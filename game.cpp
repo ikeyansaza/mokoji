@@ -44,8 +44,13 @@ int menuSlot(Game::Stage stage, int i) {
 }
 }  // namespace
 
+int Game::minutesOfDay() const {
+    uint64_t minutes = uint64_t(_age_ticks) * 60u / TICKS_PER_HOUR + uint64_t(START_HOUR) * 60u;
+    return int(minutes % (24u * 60u));
+}
+
 int Game::hourOfDay() const {
-    return int((_age_ticks / TICKS_PER_HOUR + START_HOUR) % 24);
+    return minutesOfDay() / 60;
 }
 
 bool Game::isNight() const {

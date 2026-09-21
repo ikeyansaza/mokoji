@@ -20,6 +20,7 @@ private:
     static int backgroundDrift(const Game& g);
     void drawGrass(int dx);
     void drawNightSky(int frame, int dx);
+    void drawDaySky(const Game& g);
 
     void drawMain(const Game& g);
     void drawMenu(const Game& g);

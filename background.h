@@ -26,6 +26,15 @@ bool grassPixel(int x, int y);
 // 右上の三日月（")" 型）。
 bool moonPixel(int x, int y);
 
+// 昼の空。太陽は 6:00〜22:00 に、左から右へ弧を描いて動く（朝夕は低く、昼は高い）。
+// minutes は 1 日の中の分（0〜1439）。frame が変わると、斜めの光線が消えてきらきらする。
+constexpr int SUN_W = 9, SUN_H = 9;
+void sunPosition(int minutes, int* x, int* y);          // 太陽の左上
+bool sunPixel(int x, int y, int minutes, int frame);
+
+// 雲：2 つがゆっくり右へ流れ、右端を出たら左端から戻る。tick は Game::ageTicks（約 50ms ごと）。
+bool cloudPixel(int x, int y, int tick);
+
 // 星（1px の点）。3 つに 1 つは十字（＋）で、frame（0/1 など）が変わると十字になる星が入れ替わる。
 // 星の中心は、どのフレームでも点いている。
 bool starPixel(int x, int y, int frame);

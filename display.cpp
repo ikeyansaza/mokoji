@@ -40,6 +40,24 @@ void Display::drawGrass(int dx) {
     }
 }
 
+// 昼の空（太陽・雲）。太陽は時刻で弧を描き、斜めの光線が約 1 秒ごとに入れ替わる。雲はゆっくり右へ流れる。
+// 雲は太陽の後ろにする（太陽の四角の中は太陽だけ描く）。羊の上端より上の帯だけ。
+void Display::drawDaySky(const Game& g) {
+    const int minutes = g.minutesOfDay();
+    const int tick    = int(g.ageTicks());
+    const int frame   = (tick / 20) & 1;
+    int sx, sy;
+    background::sunPosition(minutes, &sx, &sy);
+    for (int y = 0; y <= background::SKY_BOTTOM; ++y) {
+        for (int x = 0; x < background::W; ++x) {
+            const bool in_sun_box = x >= sx && x < sx + background::SUN_W && y >= sy && y < sy + background::SUN_H;
+            const bool lit = in_sun_box ? background::sunPixel(x, y, minutes, frame)
+                                        : background::cloudPixel(x, y, tick);
+            if (lit) _oled->setPixel(x, y, true);
+        }
+    }
+}
+
 // 夜の空（月・星）。羊の上端より上の帯だけ。星は約 1 秒ごとに、十字になる星が入れ替わる。
 void Display::drawNightSky(int frame, int dx) {
     for (int x = 0; x < background::W; ++x) {
@@ -79,6 +97,7 @@ void Display::drawMain(const Game& g) {
     const int drift = backgroundDrift(g);
     drawGrass(drift);
     if (g.isNight()) drawNightSky(int((g.ageTicks() / 20) & 1u), drift);
+    else             drawDaySky(g);
 
     int sx = g.walkX();
     int sy = 12 + bob;
@@ -248,7 +267,6 @@ void Display::drawMinigame(const Game& g) {
     char buf[24];
 
     _oled->fillRect(0, GROUND_Y, SSD1306::W, 1, true);
-    drawGrass(backgroundDrift(g));   // 地面の線の下に草（上部はスコアとジャンプがあるので空は出さない）
 
     const bool over = (j.state() == JumpGame::State::OVER);
     auto sprite = selectSprite(g, Game::Face::RIGHT);

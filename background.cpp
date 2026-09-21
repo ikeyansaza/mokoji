@@ -31,6 +31,41 @@ const char* const kMoon[MOON_H] = {
     "..##....",
 };
 
+// 太陽（9x9）。中心の円盤と、8 方向の光線。斜めの光線（4 つ）は、フレームによって消えて、きらきらする。
+const char* const kSun[SUN_H] = {
+    "....#....",
+    ".#.....#.",
+    "...###...",
+    "..#####..",
+    "#.#####.#",
+    "..#####..",
+    "...###...",
+    ".#.....#.",
+    "....#....",
+};
+
+// 雲 A（15x5）と雲 B（11x4）。
+constexpr int CLOUD_A_W = 15, CLOUD_A_H = 5;
+const char* const kCloudA[CLOUD_A_H] = {
+    "....###........",
+    "..#######.###..",
+    ".#############.",
+    "###############",
+    ".#############.",
+};
+constexpr int CLOUD_B_W = 11, CLOUD_B_H = 4;
+const char* const kCloudB[CLOUD_B_H] = {
+    "...###.....",
+    ".#########.",
+    "###########",
+    ".#########.",
+};
+
+bool inBitmap(const char* const* rows, int w, int h, int x, int y, int x0, int y0) {
+    const int lx = x - x0, ly = y - y0;
+    return lx >= 0 && lx < w && ly >= 0 && ly < h && rows[ly][lx] == '#';
+}
+
 }  // namespace
 
 const int STARS[STAR_COUNT][2] = {
@@ -63,6 +98,35 @@ bool moonPixel(int x, int y) {
     const int lx = x - MOON_X, ly = y - MOON_Y;
     if (lx < 0 || lx >= MOON_W || ly < 0 || ly >= MOON_H) return false;
     return kMoon[ly][lx] == '#';
+}
+
+void sunPosition(int minutes, int* x, int* y) {
+    // 6:00〜22:00 を 0〜960 に直し、x は左から右へ、y は真ん中（14:00）が一番高い放物線。
+    if (minutes < 6 * 60) minutes = 6 * 60;
+    if (minutes > 22 * 60) minutes = 22 * 60;
+    const int num = minutes - 6 * 60;
+    const int dd  = 2 * num - 960;
+    *x = 4 + num * 111 / 960;                 // 4〜115（太陽の幅 9 で画面に収まる）
+    *y = 2 + 6 * dd * dd / (960 * 960);       // 2（昼）〜8（朝夕）。下端は SKY_BOTTOM 以内
+}
+
+bool sunPixel(int x, int y, int minutes, int frame) {
+    int sx, sy;
+    sunPosition(minutes, &sx, &sy);
+    if (!inBitmap(kSun, SUN_W, SUN_H, x, y, sx, sy)) return false;
+    const int lx = x - sx, ly = y - sy;
+    const bool diagonal_ray = (lx == 1 || lx == 7) && (ly == 1 || ly == 7);
+    return !(diagonal_ray && (frame & 1));
+}
+
+bool cloudPixel(int x, int y, int tick) {
+    if (tick < 0) tick = 0;
+    // 雲 A は 2 秒に 1px、雲 B は 3 秒に 1px（tick は約 50ms ごと）。右端を出たら左端から戻る。
+    // 初期位置は、起動直後（朝 8 時）の太陽（左寄り）から離しておく。
+    const int ax = (tick / 40 + 60) % (W + CLOUD_A_W) - CLOUD_A_W;
+    const int bx = (tick / 60 + 100) % (W + CLOUD_B_W) - CLOUD_B_W;
+    return inBitmap(kCloudA, CLOUD_A_W, CLOUD_A_H, x, y, ax, 3) ||
+           inBitmap(kCloudB, CLOUD_B_W, CLOUD_B_H, x, y, bx, 10);
 }
 
 bool starPixel(int x, int y, int frame) {
