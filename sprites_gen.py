@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
-"""sprites.py の Python リストから sprites.h (C++ 配列) を生成する。
+"""sprites.py の Python リストから sprites.h (C++ 配列) と oled_preview_data.js を生成する。
 
 使い方:
-    python3 sprites_gen.py            # sprites.h を上書き生成
+    python3 sprites_gen.py            # sprites.h と oled_preview_data.js を上書き生成
     python3 sprites_gen.py preview    # sprites.py のスプライトを ASCII で確認
+
+oled_preview_data.js は oled_preview.html が読み込む。成長段階・系統付きで全スプライトを持つので、
+HTML を開くだけで進化ツリーが表示できる（sprites.py の貼り付け不要）。
 """
 
+import json
 import sys
 import sprites
 
@@ -80,6 +84,117 @@ def gen_header():
     return "\n".join(out) + "\n"
 
 
+# === oled_preview.html 用データ（成長段階・系統） ===
+# スプライト名は BABY / YOUNG_<系統> / ADULT_<品種> / ADULT_<品種>_FLUFFY|LONGHORN の形で、
+# ここから段階と系統を割り出す。対応表は game.h の Stage / Breed / Family に合わせる。
+# 新しい品種・系統を足したときは、この表も更新する（未知の名前は ValueError で気づける）。
+
+# 成長段階（表示順）。ADULT の増毛期・角長期は、ゲーム側では ADULT のまま量で判定するが、
+# プレビューでは別の段階 SPECIAL（特殊成長）として並べる。
+STAGES = [
+    ("BABY", "ベビー"),
+    ("YOUNG", "若羊"),
+    ("ADULT", "成体"),
+    ("SPECIAL", "特殊成長"),
+]
+
+# 系統（表示順）
+FAMILIES = [
+    ("MOKO", "モコ系"),
+    ("SUFFOLK", "サフォーク系"),
+    ("WILD", "ワイルド系"),
+]
+
+# 品種 → (系統, 表示名)。game.h の Breed に対応
+BREEDS = {
+    "MERINO":     ("MOKO",    "メリノ"),
+    "CORRIEDALE": ("MOKO",    "コリデール"),
+    "LINCOLN":    ("MOKO",    "リンカーン"),
+    "SUFFOLK":    ("SUFFOLK", "サフォーク"),
+    "HAMPSHIRE":  ("SUFFOLK", "ハンプシャー"),
+    "MOUFLON":    ("WILD",    "ムフロン"),
+    "BIGHORN":    ("WILD",    "ビッグホーン"),
+}
+
+# 特殊成長 → (表示名, 対象の系統)。増毛はモコ・サフォーク系のみ、角長はワイルド系のみ
+VARIANTS = {
+    "FLUFFY":   ("増毛", {"MOKO", "SUFFOLK"}),
+    "LONGHORN": ("角長", {"WILD"}),
+}
+
+FRAMES = ("F", "L", "R")   # 正面 / 左向き / 右向き
+
+
+def classify_form(form_id):
+    """フォーム名（_F/_L/_R を除いた名前）から段階・系統・品種・特殊成長を割り出す。
+
+    未知の名前や組み合わせは ValueError（対応表の更新漏れを黙って通さない）。
+    """
+    family_labels = dict(FAMILIES)
+    parts = form_id.split("_")
+
+    if form_id == "BABY":
+        return {"id": form_id, "stage": "BABY", "family": None, "breed": None,
+                "variant": None, "label": "ベビー"}
+
+    if len(parts) == 2 and parts[0] == "YOUNG" and parts[1] in family_labels:
+        return {"id": form_id, "stage": "YOUNG", "family": parts[1], "breed": None,
+                "variant": None, "label": f"若羊 {family_labels[parts[1]]}"}
+
+    if parts[0] == "ADULT" and len(parts) in (2, 3) and parts[1] in BREEDS:
+        breed = parts[1]
+        family, breed_label = BREEDS[breed]
+        if len(parts) == 2:
+            return {"id": form_id, "stage": "ADULT", "family": family, "breed": breed,
+                    "variant": None, "label": breed_label}
+        variant = parts[2]
+        if variant in VARIANTS and family in VARIANTS[variant][1]:
+            return {"id": form_id, "stage": "SPECIAL", "family": family, "breed": breed,
+                    "variant": variant, "label": f"{breed_label} {VARIANTS[variant][0]}"}
+
+    raise ValueError(f"段階・系統を判定できないスプライト名: {form_id}（sprites_gen.py の対応表を更新する）")
+
+
+def forms():
+    """SPRITE_NAMES を（_F/_L/_R を束ねた）フォーム単位にまとめる。SPRITE_NAMES の並び順を保つ。"""
+    grouped = {}
+    for name in SPRITE_NAMES:
+        form_id, _, frame = name.rpartition("_")
+        if frame not in FRAMES:
+            raise ValueError(f"末尾が _F/_L/_R ではないスプライト名: {name}")
+        if form_id not in grouped:
+            grouped[form_id] = classify_form(form_id)
+            grouped[form_id]["frames"] = {}
+        grouped[form_id]["frames"][frame] = to_ascii(getattr(sprites, name))
+    for form_id, f in grouped.items():
+        missing = [k for k in FRAMES if k not in f["frames"]]
+        if missing:
+            raise ValueError(f"{form_id} に {missing} のフレームがない")
+    return list(grouped.values())
+
+
+def gen_preview_data():
+    """oled_preview.html が読み込む JS（window.MOKOJI_DATA = {...};）を返す。
+
+    フォームごとに 1 行にして、差分が追いやすいようにしている。
+    """
+    dump = lambda o: json.dumps(o, ensure_ascii=False)
+    stages = [{"id": i, "label": l} for i, l in STAGES]
+    families = [{"id": i, "label": l} for i, l in FAMILIES]
+    lines = [
+        "// auto-generated from sprites.py — do not edit by hand",
+        "// 再生成: python3 sprites_gen.py",
+        "window.MOKOJI_DATA = {",
+        f' "stages": {dump(stages)},',
+        f' "families": {dump(families)},',
+        ' "forms": [',
+        ",\n".join("  " + dump(f) for f in forms()),
+        " ]",
+        "};",
+    ]
+    return "\n".join(lines) + "\n"
+
+
 def preview():
     """全スプライトを ASCII で確認"""
     for name in SPRITE_NAMES:
@@ -96,4 +211,6 @@ if __name__ == "__main__":
     else:
         with open("sprites.h", "w") as f:
             f.write(gen_header())
-        print("sprites.h を再生成しました")
+        with open("oled_preview_data.js", "w", encoding="utf-8") as f:
+            f.write(gen_preview_data())
+        print("sprites.h と oled_preview_data.js を再生成しました")
