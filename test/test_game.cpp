@@ -1396,6 +1396,11 @@ static void test_eat_bite_timing() {
     assert(bitesTaken(40) == 3);
     // ご飯の動き（40 フレーム）の中に、3 回とも収まる
     assert(BITE_START[2] + BITE_LEN <= 40);
+    // 1 回目は、ご飯の音（画面が SOUND_BLOCK_TICKS フレーム止まる）が終わって、ロールを見つける間が
+    // できてから始まる。早いと、音が終わった瞬間に、いきなり食べている絵が出る。
+    assert(BITE_START[0] >= SOUND_BLOCK_TICKS + LOOK_TICKS);
+    // ぱくっとぱくっの間は、体を戻す間（BITE_LEN より長い）がある
+    for (int i = 1; i < BITE_COUNT; ++i) assert(BITE_START[i] - BITE_START[i - 1] > BITE_LEN);
 }
 
 static void test_eat_lean_only_while_biting() {

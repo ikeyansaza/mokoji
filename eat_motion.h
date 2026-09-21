@@ -9,8 +9,15 @@
 namespace eat_motion {
 
 constexpr int BITE_COUNT = 3;
-constexpr int BITE_START[BITE_COUNT] = { 4, 16, 28 };   // ぱくっの開始フレーム
+constexpr int BITE_START[BITE_COUNT] = { 12, 22, 32 };  // ぱくっの開始フレーム
 constexpr int BITE_LEN   = 5;                            // ぱくっの間、うなずく
+
+// ご飯の音（Sound::mog）は、鳴り終わるまで待つ作りで、約 0.3 秒（6 フレーム）のあいだ画面が止まる。
+// 止まっている間に時間が過ぎるので、1 回目のぱくっは、音が終わってから、ロールを見つける間
+// （LOOK_TICKS）をおいて始める。
+constexpr int SOUND_BLOCK_TICKS = 6;
+constexpr int LOOK_TICKS        = 4;
+
 constexpr int LEAN_PX    = 3;                            // ロールのほうへ傾く量（右または左へ・下へ）
 
 constexpr int BALE_W   = 12;   // 干し草ロールの大きさ
