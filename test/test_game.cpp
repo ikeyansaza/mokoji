@@ -914,6 +914,22 @@ static void test_minigame_aborted_when_falling_asleep() {
     assert(g.happy() == 50 && g.hunger() == 50);
 }
 
+static void test_status_level() {
+    // 空腹・幸福（0〜100）を 5 段階のバーにする。生きている（1 以上）なら、必ず 1 段階は塗る。
+    assert(Game::statusLevel(0)   == 0);
+    assert(Game::statusLevel(1)   == 1);
+    assert(Game::statusLevel(20)  == 1);
+    assert(Game::statusLevel(21)  == 2);
+    assert(Game::statusLevel(40)  == 2);
+    assert(Game::statusLevel(41)  == 3);
+    assert(Game::statusLevel(80)  == 4);
+    assert(Game::statusLevel(81)  == 5);
+    assert(Game::statusLevel(100) == 5);
+    assert(Game::statusLevel(255) == 5);     // 範囲外は 5 で止める
+    assert(Game::statusLevel(-5)  == 0);     // 負は 0
+    assert(Game::statusLevel(-100) == 0);    // 大きな負でも 0（切り上げの計算だけだと負になる）
+}
+
 int main() {
     std::setbuf(stdout, nullptr);
     std::srand(42);   // 進化判定の再現性のため固定シード
@@ -940,6 +956,7 @@ int main() {
     RUN(test_kana_glyph_all_distinct);
     RUN(test_kana_glyph_matches_misaki_a);
     RUN(test_kana_glyph_out_of_range_is_blank);
+    RUN(test_status_level);
     RUN(test_menu_labels_for_young_and_adult);
     RUN(test_baby_menu_has_no_shear);
     RUN(test_baby_menu_cursor_wraps_at_four);

@@ -43,6 +43,12 @@ int menuSlot(Game::Stage stage, int i) {
 }
 }  // namespace
 
+int Game::statusLevel(int value) {
+    if (value <= 0) return 0;
+    int level = (value + 19) / 20;   // 切り上げ：1〜20 → 1、21〜40 → 2、…、81〜100 → 5
+    return level > 5 ? 5 : level;
+}
+
 int Game::menuCount() const {
     return (_stage == Stage::BABY) ? MENU_COUNT - 1 : MENU_COUNT;
 }
@@ -116,7 +122,6 @@ Game::Game(Sound* sound, const GameSaveData* data)
     _action      = Action::NONE;
     _screen      = Screen::MAIN;
     _menu_cursor = 0;
-    _left_held   = false;
     _walk_state  = WalkState::WALK;
     _walk_state_remaining = 80;   // 起動直後 4 秒は歩く
 
@@ -331,8 +336,6 @@ void Game::onButton(Button btn) {
     switch (_screen) {
         case Screen::MAIN:
             if (btn == Button::CENTER) _screen = Screen::MENU;
-            // LEFT は押下中（_left_held）でステータス overlay 表示する仕組みなので
-            // ここでは何もしない。
             break;
         case Screen::MENU:
             if (btn == Button::LEFT) {

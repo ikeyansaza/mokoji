@@ -49,20 +49,6 @@ void Display::drawMain(const Game& g) {
     // 必要なら drawFaceFx の座標を新スプライト基準に書き直して有効化する。
     // if (g.face() == Game::Face::FRONT) drawFaceFx(g, sx, sy);
     (void)0;
-
-    // ステータス overlay：LEFT ボタン押下中だけ表示
-    if (g.leftHeld()) {
-        int hbars = g.hunger() / 20;
-        char status[16];
-        int p = 0;
-        status[p++] = 'H';
-        status[p++] = ':';
-        for (int i = 0; i < hbars; ++i)        status[p++] = '|';
-        for (int i = hbars; i < 5; ++i)        status[p++] = '.';
-        status[p] = '\0';
-        _oled->drawText(status, 0, 0);
-        _oled->drawKana(g.nameKana(), 96, 0);
-    }
 }
 
 void Display::drawFaceFx(const Game& g, int sx, int sy) {
@@ -142,18 +128,29 @@ static int kanaLen(const uint8_t* s) {
     return n;
 }
 
+// 見出し（漢字 2 字 = 16px）と、5 段階のバー。塗りの四角が現在の段階、空の四角が残り。
+// 残り 1 段階以下（あと少しで死ぬ）のときは、約 0.5 秒ごとに空のバーへ切り替えて点滅させ、目に付くようにする。
+void Display::drawStatusBar(const Game& g, int x, int y, const char* label, int value) {
+    constexpr int SEG_W = 6, SEG_H = 6, SEG_PITCH = 7;
+    const int level = Game::statusLevel(value);
+    const bool blink_off = (level <= 1) && ((g.ageTicks() / 10) & 1);   // ageTicks は約 50ms ごと
+    _oled->drawText(label, x, y);
+    const int bx = x + 18;
+    for (int i = 0; i < 5; ++i) {
+        const int sx = bx + i * SEG_PITCH;
+        const int sy = y + 1;
+        _oled->fillRect(sx, sy, SEG_W, SEG_H, true);
+        if (i >= level || blink_off) {
+            _oled->fillRect(sx + 1, sy + 1, SEG_W - 2, SEG_H - 2, false);   // 中を抜いて空の四角にする
+        }
+    }
+}
+
 void Display::drawMenu(const Game& g) {
-    // 上段：ステータス（メニュー操作中なので常時表示で意思決定の材料に）
-    int hbars = g.hunger() / 20;
-    char status[16];
-    int p = 0;
-    status[p++] = 'H';
-    status[p++] = ':';
-    for (int i = 0; i < hbars; ++i)        status[p++] = '|';
-    for (int i = hbars; i < 5; ++i)        status[p++] = '.';
-    status[p] = '\0';
-    _oled->drawText(status, 0, 0);
-    _oled->drawKana(g.nameKana(), 96, 0);
+    // 上段：空腹・幸福を 5 段階のバーで（メニュー操作中なので常時表示して、意思決定の材料にする）。
+    // 状態はメニュー画面でだけ見える。名前などはプロフィールに出す。
+    drawStatusBar(g, 2, 4, "空腹", g.hunger());
+    drawStatusBar(g, 68, 4, "幸福", g.happy());
 
     // 中段：選択中の項目だけを 2 倍（日本語 16x16）で中央に出す。余白を確保するため 1 項目のみ。
     // 左右の < > は「L/R で切り替えられる」合図、下のドットは 5 項目中の現在位置。
