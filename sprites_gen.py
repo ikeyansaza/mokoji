@@ -7,9 +7,12 @@
 
 oled_preview_data.js は oled_preview.html が読み込む。成長段階・系統付きで全スプライトを持つので、
 HTML を開くだけで進化ツリーが表示できる（sprites.py の貼り付け不要）。
+docs/sprite-candidates/*/candidates.txt の候補（没案を含む）も一緒に持ち、没候補として表示できる。
 """
 
 import json
+import os
+import re
 import sys
 import sprites
 
@@ -173,22 +176,91 @@ def forms():
     return list(grouped.values())
 
 
+# === 候補（docs/sprite-candidates） ===
+# 各フォルダの candidates.txt は、oled_preview.html にそのまま貼れる形式（NAME = ( "24 文字" x 24 行 )）で、
+# 各スプライトの直前に「# <ID>: <特徴> — <状態>」のコメントがある。それを読んで、没候補などとして表示する。
+
+CANDIDATES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "docs", "sprite-candidates")
+
+# トピック（フォルダ名, 表示名）。表示順。docs に新しいフォルダを足したら、ここにも足す。
+TOPICS = [
+    ("young", "若羊"),
+    ("fluffy", "増毛"),
+    ("horn", "角（ワイルド系）"),
+    ("hampshire", "ハンプシャー"),
+]
+
+
+def candidate_kind(status):
+    """候補の状態の文言を、adopted（採用）/ rejected（没: 未採用・外した・旧デザイン）/ other（B 案のベースなど）に分ける。
+
+    未知の言い回しは ValueError（分類の更新漏れを黙って通さない）。
+    """
+    if status.startswith("採用"):
+        return "adopted"
+    if any(k in status for k in ("未採用", "外した", "旧デザイン")):
+        return "rejected"
+    if "ベースに" in status:
+        return "other"
+    raise ValueError(f"候補の状態を分類できない: {status}（sprites_gen.py の candidate_kind を更新する）")
+
+
+def candidates():
+    """docs/sprite-candidates/<topic>/candidates.txt の全候補を、TOPICS の順・ファイル内の順で返す。"""
+    known = {t for t, _ in TOPICS}
+    folders = sorted(d for d in os.listdir(CANDIDATES_DIR) if os.path.isdir(os.path.join(CANDIDATES_DIR, d)))
+    unknown = [d for d in folders if d not in known]
+    if unknown:
+        raise ValueError(f"docs/sprite-candidates/{unknown} が TOPICS にない（sprites_gen.py に足す）")
+
+    out = []
+    for topic, label in TOPICS:
+        path = os.path.join(CANDIDATES_DIR, topic, "candidates.txt")
+        lines = open(path, encoding="utf-8").read().split("\n")
+        i = 0
+        while i < len(lines):
+            m = re.match(r"^([A-Z][A-Z0-9_]*) = \($", lines[i])
+            if not m:
+                i += 1
+                continue
+            name = m.group(1)
+            cm = re.match(r"^# (.+?): (.+) — (.+)$", lines[i - 1]) if i > 0 else None
+            if not cm:
+                raise ValueError(f"{path}: {name} の直前に「# ID: 特徴 — 状態」のコメントがない")
+            short, feature, status = cm.groups()
+            j = i + 1
+            while lines[j] != ")":
+                j += 1
+            rows = re.findall(r'"([.#]{24})"', "\n".join(lines[i + 1:j]))
+            if len(rows) != H:
+                raise ValueError(f"{path}: {name} が {len(rows)} 行（{H} 行が必要）")
+            out.append({"topic": topic, "topicLabel": label, "id": name, "short": short, "feature": feature,
+                        "status": status, "kind": candidate_kind(status), "rows": rows})
+            i = j + 1
+    return out
+
+
 def gen_preview_data():
     """oled_preview.html が読み込む JS（window.MOKOJI_DATA = {...};）を返す。
 
-    フォームごとに 1 行にして、差分が追いやすいようにしている。
+    フォーム・候補ごとに 1 行にして、差分が追いやすいようにしている。
     """
     dump = lambda o: json.dumps(o, ensure_ascii=False)
     stages = [{"id": i, "label": l} for i, l in STAGES]
     families = [{"id": i, "label": l} for i, l in FAMILIES]
+    topics = [{"id": i, "label": l} for i, l in TOPICS]
     lines = [
-        "// auto-generated from sprites.py — do not edit by hand",
+        "// auto-generated from sprites.py and docs/sprite-candidates — do not edit by hand",
         "// 再生成: python3 sprites_gen.py",
         "window.MOKOJI_DATA = {",
         f' "stages": {dump(stages)},',
         f' "families": {dump(families)},',
+        f' "topics": {dump(topics)},',
         ' "forms": [',
         ",\n".join("  " + dump(f) for f in forms()),
+        " ],",
+        ' "candidates": [',
+        ",\n".join("  " + dump(c) for c in candidates()),
         " ]",
         "};",
     ]

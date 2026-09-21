@@ -115,5 +115,75 @@ class GeneratedFilesTest(unittest.TestCase):
                              "sprites.h が古い。python3 sprites_gen.py で再生成する")
 
 
+CANDIDATES_DIR = os.path.join(ROOT, "docs", "sprite-candidates")
+
+
+class CandidatesTest(unittest.TestCase):
+    """docs/sprite-candidates/*/candidates.txt の候補を oled_preview.html に渡すデータのテスト。"""
+
+    def setUp(self):
+        self.cands = sprites_gen.candidates()
+
+    def test_kind_of_status(self):
+        # 採用 / 没（未採用・外した・旧デザイン）/ その他（B 案のベースなど）に分ける
+        kind = sprites_gen.candidate_kind
+        self.assertEqual(kind("採用: YOUNG_MOKO"), "adopted")
+        self.assertEqual(kind("採用: MOUFLON_LONGHORN（1 行下げて使用）"), "adopted")
+        self.assertEqual(kind("未採用"), "rejected")
+        self.assertEqual(kind("初期案・未採用（見立て: 小さすぎる）"), "rejected")
+        self.assertEqual(kind("外した（B01 と大差なし）"), "rejected")
+        self.assertEqual(kind("旧デザイン（M0 として、モコ系が引き継いだ）"), "rejected")
+        self.assertEqual(kind("初期案・これをベースに B01〜B10 へ展開"), "other")
+
+    def test_unknown_status_is_rejected(self):
+        # 新しい状態の言い回しを足したときに、分類の更新漏れを黙って通さない
+        with self.assertRaises(ValueError):
+            sprites_gen.candidate_kind("よくわからない")
+
+    def test_every_sprite_in_candidates_files_is_loaded(self):
+        for topic in sorted({c["topic"] for c in self.cands}):
+            with open(os.path.join(CANDIDATES_DIR, topic, "candidates.txt"), encoding="utf-8") as f:
+                in_file = len([l for l in f if l.startswith(tuple("ABCDEFGHIJKLMNOPQRSTUVWXYZ")) and " = (" in l])
+            with self.subTest(topic=topic):
+                self.assertEqual(len([c for c in self.cands if c["topic"] == topic]), in_file)
+
+    def test_all_topic_folders_are_covered(self):
+        # docs に新しいトピックのフォルダを足したら、sprites_gen.py の TOPICS にも足す
+        folders = sorted(d for d in os.listdir(CANDIDATES_DIR) if os.path.isdir(os.path.join(CANDIDATES_DIR, d)))
+        self.assertEqual(sorted({c["topic"] for c in self.cands}), folders)
+
+    def test_fields(self):
+        ids = [c["id"] for c in self.cands]
+        self.assertEqual(len(ids), len(set(ids)), "名前が重複している")
+        for c in self.cands:
+            with self.subTest(candidate=c["id"]):
+                for key in ("topic", "topicLabel", "id", "short", "feature", "status", "kind", "rows"):
+                    self.assertTrue(c[key], f"{key} が空")
+                self.assertIn(c["kind"], ("adopted", "rejected", "other"))
+                self.assertEqual(len(c["rows"]), 24)
+                self.assertTrue(all(len(r) == 24 and set(r) <= {".", "#"} for r in c["rows"]))
+
+    def test_adopted_candidates_match_the_game(self):
+        # 「採用: <フォーム名>」と書いた案は、実際のゲームのスプライトと同じ絵であること（記録と実物の食い違いを防ぐ）。
+        # 角の案は MOUFLON の体に描いた見本で、YOUNG_WILD などの体とは違うので対象外。
+        forms = sprites_gen.forms()
+        by_id = {f["id"]: f for f in forms}
+        checked = 0
+        for c in self.cands:
+            if c["kind"] != "adopted" or c["topic"] == "horn":
+                continue
+            target = c["status"].split(":", 1)[1].strip().split("（")[0]
+            if target in by_id:
+                checked += 1
+                with self.subTest(candidate=c["id"], form=target):
+                    self.assertEqual(c["rows"], by_id[target]["frames"]["F"])
+        self.assertGreater(checked, 5, "突き合わせた採用案が少なすぎる")
+
+    def test_payload_includes_candidates(self):
+        data = parse_js(sprites_gen.gen_preview_data())
+        self.assertEqual([c["id"] for c in data["candidates"]], [c["id"] for c in self.cands])
+        self.assertEqual([t["id"] for t in data["topics"]], sorted({c["topic"] for c in self.cands}, key=lambda t: [x[0] for x in sprites_gen.TOPICS].index(t)))
+
+
 if __name__ == "__main__":
     unittest.main()
