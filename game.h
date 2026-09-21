@@ -31,6 +31,10 @@ public:
     enum class Screen     : uint8_t { MAIN, MENU, GRAVE, NAMING, MINIGAME, PROFILE };
     enum class Face       : uint8_t { LEFT, FRONT, RIGHT };
     enum class Action     : uint8_t { NONE, FEED, PET, SHEAR, POLISH, MINI, PROFILE };
+    // 待つ音（sleep_ms で鳴り終わるまで止まる音）。ボタン処理の中で鳴らすと、鳴り終わるまで画面の
+    // 描画が遅れ、メニューが表示されたまま音が聞こえる。そこで Game は予約するだけにして、
+    // main が描画のあとに playPendingSfx() で鳴らす。ミニゲームの音（blip）は待たないので、その場で鳴らす。
+    enum class Sfx        : uint8_t { NONE, MOG, PET, JOKI, HAPPY };
     enum class Button     : uint8_t { LEFT, CENTER, RIGHT, LEFT_LONG };
     enum class NamingMode : uint8_t {
         SELECT_MODE,   // [PRESET] / [TYPE] のどちらかを選ぶ
@@ -105,6 +109,8 @@ public:
     // updateMini() を呼ぶ。ゲームの進行は JumpGame が持ち、Game は結果（幸福度・空腹）を反映する。
     void setNowMs(uint32_t now_ms) { _now_ms = now_ms; }
     void updateMini();
+    Sfx  pendingSfx() const { return _pending_sfx; }
+    void playPendingSfx();   // 予約された待つ音を鳴らして、予約を空にする（main が描画のあとに呼ぶ）
     bool inMiniGame() const { return _screen == Screen::MINIGAME; }
     const JumpGame& jump() const { return _jump; }
     int  miniReward() const { return _mini_reward; }   // 直近のゲームで上がった幸福度（表示用）
@@ -115,6 +121,8 @@ private:
     uint32_t   _now_ms        = 0;
     int        _mini_reward   = 0;
     void       applyMiniReward();
+    Sfx        _pending_sfx = Sfx::NONE;
+    void       queueSfx(Sfx s) { _pending_sfx = s; }   // 後から予約したものを優先する
     void       playMiniSounds(uint8_t ev);
     char       _name[8];                  // romaji 表示用
     uint8_t    _name_kana[5];             // ひらがな index 列（kana::END 終端、最大 4 字）

@@ -416,14 +416,14 @@ void Game::doAction(Action act) {
             _tend_feed += 1;
             _action = Action::FEED;
             _dirty = true;
-            if (_sound) _sound->mog();
+            queueSfx(Sfx::MOG);
             break;
         case Action::PET:
             _happy = std::min(100, _happy + 20);
             _tend_pet += 1;
             _action = Action::PET;
             _dirty = true;
-            if (_sound) _sound->mee();
+            queueSfx(Sfx::PET);
             break;
         case Action::SHEAR:
             // モコ系・サフォーク系のみ実効。それ以外は no-op。
@@ -433,7 +433,7 @@ void Game::doAction(Action act) {
                 _tend_shear += 1;
                 _action = Action::SHEAR;
                 _dirty = true;
-                if (_sound) _sound->joki();
+                queueSfx(Sfx::JOKI);
             }
             break;
         case Action::POLISH:
@@ -444,7 +444,7 @@ void Game::doAction(Action act) {
                 _tend_polish += 1;
                 _action = Action::POLISH;
                 _dirty = true;
-                if (_sound) _sound->joki();   // 暫定で同じ音
+                queueSfx(Sfx::JOKI);   // 暫定で同じ音
             }
             break;
         case Action::MINI:
@@ -457,6 +457,19 @@ void Game::doAction(Action act) {
             break;
     }
     _walk_tick = 0;
+}
+
+void Game::playPendingSfx() {
+    Sfx s = _pending_sfx;
+    _pending_sfx = Sfx::NONE;
+    if (!_sound) return;
+    switch (s) {
+        case Sfx::MOG:   _sound->mog();   break;
+        case Sfx::PET:   _sound->pet();   break;
+        case Sfx::JOKI:  _sound->joki();  break;
+        case Sfx::HAPPY: _sound->happy(); break;
+        case Sfx::NONE:  break;
+    }
 }
 
 void Game::updateMini() {
@@ -514,7 +527,7 @@ void Game::evolveYoung() {
     }
     _menu_cursor = 0;   // メニューの項目数が 4 → 5 に変わるので、開いたままでもカーソルの意味がずれないよう先頭へ
     _dirty = true;
-    if (_sound) _sound->happy();
+    queueSfx(Sfx::HAPPY);
 }
 
 void Game::evolveAdult() {
@@ -545,7 +558,7 @@ void Game::evolveAdult() {
 
     _stage = Stage::ADULT;
     _dirty = true;
-    if (_sound) _sound->happy();
+    queueSfx(Sfx::HAPPY);
 }
 
 void Game::die(DeathCause cause) {

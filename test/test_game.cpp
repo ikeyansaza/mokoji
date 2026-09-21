@@ -1012,6 +1012,59 @@ static void test_age_days_counts_from_first_day() {
     assert(g.ageDays() == 2);
 }
 
+// ---- 待つ音は予約して、画面を切り替えたあとに鳴らす --------------------------
+// 待つ音（餌・撫でる・毛刈り・進化）をボタン処理の中で鳴らすと、鳴り終わるまで画面の描画が遅れ、
+// メニューが表示されたまま音が聞こえる。Game は音を予約し、main が描画のあとに playPendingSfx で鳴らす。
+static Game make_young_with_growth(Game::Stage stage) {
+    Game base(nullptr);
+    skip_naming(base);
+    GameSaveData d = base.saveData();
+    d.stage = uint8_t(stage);
+    d.wool  = 50;
+    d.horn  = 50;
+    return Game(nullptr, &d);
+}
+
+static void test_action_sounds_are_deferred() {
+    Game g = make_game_with(50, 50);
+    assert(g.pendingSfx() == Game::Sfx::NONE);
+    menu_select(g, Game::Action::FEED);
+    assert(g.pendingSfx() == Game::Sfx::MOG);
+    g.playPendingSfx();
+    assert(g.pendingSfx() == Game::Sfx::NONE);         // 鳴らしたら予約は空になる
+
+    menu_select(g, Game::Action::PET);
+    assert(g.pendingSfx() == Game::Sfx::PET);
+    g.playPendingSfx();
+    assert(g.pendingSfx() == Game::Sfx::NONE);
+
+    Game moko = make_young_with_growth(Game::Stage::YOUNG_MOKO);
+    menu_select(moko, Game::Action::SHEAR);
+    assert(moko.pendingSfx() == Game::Sfx::JOKI);
+
+    Game wild = make_young_with_growth(Game::Stage::YOUNG_WILD);
+    menu_select(wild, Game::Action::POLISH);
+    assert(wild.pendingSfx() == Game::Sfx::JOKI);
+}
+
+static void test_no_sound_when_action_has_no_effect() {
+    // 毛が短くて刈れないとき・就寝中の撫でる（羊は起きない）は、音を予約しない
+    Game g = make_stage_game(Game::Stage::YOUNG_MOKO);   // 毛は 0
+    menu_select(g, Game::Action::SHEAR);
+    assert(g.pendingSfx() == Game::Sfx::NONE);
+    Game s = make_sleeping_game();
+    menu_select(s, Game::Action::PET);
+    assert(s.pendingSfx() == Game::Sfx::NONE);
+}
+
+static void test_evolution_sound_is_deferred() {
+    Game g(nullptr);
+    skip_naming(g);
+    for (uint32_t i = 0; i < 3 * Game::TICKS_PER_DAY + Game::TICKS_PER_HOUR; ++i) g.tick();
+    assert(g.stage() != Game::Stage::BABY);
+    assert(g.pendingSfx() == Game::Sfx::HAPPY);
+}
+
 int main() {
     std::setbuf(stdout, nullptr);
     std::srand(42);   // 進化判定の再現性のため固定シード
@@ -1043,6 +1096,9 @@ int main() {
     RUN(test_baby_menu_has_no_shear);
     RUN(test_baby_menu_cursor_wraps_at_five);
     RUN(test_baby_wool_does_not_grow_but_young_does);
+    RUN(test_action_sounds_are_deferred);
+    RUN(test_no_sound_when_action_has_no_effect);
+    RUN(test_evolution_sound_is_deferred);
     RUN(test_profile_opens_and_any_button_closes);
     RUN(test_profile_allowed_while_sleeping);
     RUN(test_kind_names);

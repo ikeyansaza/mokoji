@@ -124,6 +124,9 @@ int main() {
             disp.draw(game);
             oled.show();
             last_draw_ms = now_ms;
+            // 待つ音（餌・撫でる・毛刈り・進化）は、画面を切り替えたあとに鳴らす。ボタン処理の中で鳴らすと、
+            // 鳴り終わるまで描画が遅れて、メニューが表示されたまま音が聞こえてしまう。
+            game.playPendingSfx();
         }
 
         // dirty なら最短間隔以上経過していれば保存、dirty でなくても force 間隔で保存。
