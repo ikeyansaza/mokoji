@@ -1185,27 +1185,29 @@ static void test_sun_is_fixed_in_the_sky() {
     assert(background::SUN_X + background::SUN_W + DRIFT < background::MOON_X);
 }
 
-static int count_sun(int frame) {
+static int count_sun() {
     int n = 0;
     for (int y = 0; y < background::H; ++y)
         for (int x = 0; x < background::W; ++x)
-            if (background::sunPixel(x, y, frame)) ++n;
+            if (background::sunPixel(x, y)) ++n;
     return n;
 }
 
-static void test_sun_shape_and_twinkle() {
+static void test_sun_shape_and_steady() {
     // 太陽の外は点かない
     for (int y = 0; y < background::H; ++y) {
         for (int x = 0; x < background::W; ++x) {
             bool inside = x >= background::SUN_X && x < background::SUN_X + background::SUN_W &&
                           y >= background::SUN_Y && y < background::SUN_Y + background::SUN_H;
-            if (!inside) assert(!background::sunPixel(x, y, 0));
+            if (!inside) assert(!background::sunPixel(x, y));
         }
     }
-    // 斜めの光線は、フレームによって消える（きらきら）。本体は消えない。
-    const int c0 = count_sun(0), c1 = count_sun(1);
-    assert(c1 > 0);
-    assert(c0 > c1);
+    // 円盤と 8 方向の光線がいつも点いている（点滅しない）。斜めの光線の位置も点く。
+    assert(count_sun() >= 25);
+    for (int i = 0; i < 4; ++i) {
+        int dx = (i & 1) ? 7 : 1, dy = (i & 2) ? 7 : 1;
+        assert(background::sunPixel(background::SUN_X + dx, background::SUN_Y + dy));
+    }
 }
 
 static void test_clouds_stay_in_sky_and_drift() {
@@ -1267,7 +1269,7 @@ int main() {
     RUN(test_sky_stays_in_the_sky_strip);
     RUN(test_stars_twinkle_but_never_vanish);
     RUN(test_sun_is_fixed_in_the_sky);
-    RUN(test_sun_shape_and_twinkle);
+    RUN(test_sun_shape_and_steady);
     RUN(test_clouds_stay_in_sky_and_drift);
     RUN(test_menu_labels_for_young_and_adult);
     RUN(test_baby_menu_has_no_shear);

@@ -26,13 +26,12 @@ bool grassPixel(int x, int y);
 // 右上の三日月（")" 型）。
 bool moonPixel(int x, int y);
 
-// 昼の空。太陽は動かさず、左上に固定する（右上の月と左右で対になる）。frame が変わると、
-// 斜めの光線が消えてきらきらする。
+// 昼の空。太陽は左上に固定する（右上の月と左右で対になる）。点滅はしない。
 // 静止した明るい塊が何時間も光り続けると OLED が焼き付くので、Display は他の背景と同じ
 // ゆっくりした揺れ（±2px）を足して描く。
 constexpr int SUN_W = 9, SUN_H = 9;
 constexpr int SUN_X = 12, SUN_Y = 3;
-bool sunPixel(int x, int y, int frame);
+bool sunPixel(int x, int y);
 
 // 雲：2 つがゆっくり右へ流れ、右端を出たら左端から戻る。tick は Game::ageTicks（約 50ms ごと）。
 bool cloudPixel(int x, int y, int tick);

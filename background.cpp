@@ -31,7 +31,7 @@ const char* const kMoon[MOON_H] = {
     "..##....",
 };
 
-// 太陽（9x9）。中心の円盤と、8 方向の光線。斜めの光線（4 つ）は、フレームによって消えて、きらきらする。
+// 太陽（9x9）。中心の円盤と、8 方向の光線。
 const char* const kSun[SUN_H] = {
     "....#....",
     ".#.....#.",
@@ -100,11 +100,8 @@ bool moonPixel(int x, int y) {
     return kMoon[ly][lx] == '#';
 }
 
-bool sunPixel(int x, int y, int frame) {
-    if (!inBitmap(kSun, SUN_W, SUN_H, x, y, SUN_X, SUN_Y)) return false;
-    const int lx = x - SUN_X, ly = y - SUN_Y;
-    const bool diagonal_ray = (lx == 1 || lx == 7) && (ly == 1 || ly == 7);
-    return !(diagonal_ray && (frame & 1));
+bool sunPixel(int x, int y) {
+    return inBitmap(kSun, SUN_W, SUN_H, x, y, SUN_X, SUN_Y);
 }
 
 bool cloudPixel(int x, int y, int tick) {

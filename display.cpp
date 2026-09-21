@@ -40,18 +40,17 @@ void Display::drawGrass(int dx) {
     }
 }
 
-// 昼の空（太陽・雲）。太陽は左上に固定で、斜めの光線が約 1 秒ごとに入れ替わる（きらきら）。
+// 昼の空（太陽・雲）。太陽は左上に固定で、点滅はしない。
 // 焼き付き対策で、他の背景と同じゆっくりした揺れ（dx）を足す。雲はゆっくり右へ流れる。
 // 雲は太陽の後ろにする（太陽の四角の中は太陽だけ描く）。羊の上端より上の帯だけ。
 void Display::drawDaySky(const Game& g, int dx) {
-    const int tick  = int(g.ageTicks());
-    const int frame = (tick / 20) & 1;
+    const int tick = int(g.ageTicks());
     for (int y = 0; y <= background::SKY_BOTTOM; ++y) {
         for (int x = 0; x < background::W; ++x) {
             const int sx = x - dx;   // 太陽の座標系（揺れを引く）
             const bool in_sun_box = sx >= background::SUN_X && sx < background::SUN_X + background::SUN_W &&
                                     y >= background::SUN_Y && y < background::SUN_Y + background::SUN_H;
-            const bool lit = in_sun_box ? background::sunPixel(sx, y, frame)
+            const bool lit = in_sun_box ? background::sunPixel(sx, y)
                                         : background::cloudPixel(x, y, tick);
             if (lit) _oled->setPixel(x, y, true);
         }
