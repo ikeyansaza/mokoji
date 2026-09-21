@@ -18,9 +18,10 @@ import sprites_gen
 # 成長段階ごとの足元（最後に絵がある行 = 足の先）
 BASELINE = {"BABY": 19, "YOUNG": 19, "ADULT": 20, "SPECIAL": 20}
 
-# 標準と違う足元を意図しているフォーム
-# MOUFLON_LONGHORN は、角を高く伸ばすために体ごと 1 行下げて作ってあるので、足元も 1 行低い
-EXCEPTIONS = {"ADULT_MOUFLON_LONGHORN": 21}
+# 標準と違う足元を意図しているフォーム（今はなし）。
+# MOUFLON_LONGHORN は以前、角を高く伸ばすために体ごと 1 行下げていた（足元 row 21）が、
+# 横に広げた新しい角は通常版と同じ高さに収まるので、標準の足元（row 20）になった。
+EXCEPTIONS = {}
 
 
 def feet_row(rows):

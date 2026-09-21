@@ -18,13 +18,13 @@ import sprites
 import sprites_gen
 
 # 角を持つスプライト → 頭のてっぺんの行。
-# MOUFLON_LONGHORN は体が 1 行下にずれていて、頭頂部が row 6（row 5 は根元の毛束）。
+# ムフロン・ビッグホーンは、通常版も角長版も同じ高さで、頭頂部が row 5。
 # YOUNG_WILD は、ベビーの小さな体に、頭とつながる太い角の芽を足した形で、頭頂部（角の先）が row 7。
 HEAD_TOP = {
     "YOUNG_WILD_F": 7,
     "ADULT_MOUFLON_F": 5,
     "ADULT_BIGHORN_F": 5,
-    "ADULT_MOUFLON_LONGHORN_F": 6,
+    "ADULT_MOUFLON_LONGHORN_F": 5,
     "ADULT_BIGHORN_LONGHORN_F": 5,
 }
 
@@ -33,6 +33,17 @@ HEAD_TOP = {
 HEAD_REGION_ROWS = 6
 # YOUNG_WILD は、耳が頭から離れている（ベビーと同じ作り）ので、耳の行を含めず、角の芽と頭（頭頂 +2 行）だけを見る。
 HEAD_REGION_ROWS_OVERRIDE = {"YOUNG_WILD_F": 3}
+
+# 頭と分かれていてよい塊の数（既定は 1 = 頭と 1 つの塊）。
+# ムフロン・ビッグホーンは、顔を細くして、鼻まわりを白抜きにしたので、あご〜首が頭から離れる。
+#   通常版は、小さな巻き角が頭と斜めに接するだけなので、頭・左右の角・あご〜首の 4 つ。
+#   角長版は、大きく巻いた角が頭の上の付け根でつながっているので、頭 + 角と、あご〜首の 2 つ。
+EXPECTED_PARTS = {
+    "ADULT_MOUFLON_F": 4,
+    "ADULT_BIGHORN_F": 4,
+    "ADULT_MOUFLON_LONGHORN_F": 2,
+    "ADULT_BIGHORN_LONGHORN_F": 2,
+}
 
 
 def grid(name):
@@ -71,9 +82,10 @@ class HornedSpriteTest(unittest.TestCase):
         for name in HEAD_TOP:
             with self.subTest(sprite=name):
                 comps = components(head_region(name))
+                expected = EXPECTED_PARTS.get(name, 1)
                 self.assertEqual(
-                    len(comps), 1,
-                    f"{name}: {len(comps)} 個に分断（細い線・浮いたピクセルあり）: "
+                    len(comps), expected,
+                    f"{name}: {len(comps)} 個に分断（期待は {expected} 個。細い線・浮いたピクセルあり）: "
                     + str([sorted(c)[0] for c in comps]),
                 )
 
