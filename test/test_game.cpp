@@ -9,6 +9,7 @@
 #include "kana.h"
 #include "jump_game.h"
 #include "background.h"
+#include "eat_motion.h"
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>
@@ -1375,6 +1376,84 @@ static void test_futon_pattern_is_simple() {
     }
 }
 
+// ---- ご飯：草を食べるモーション ---------------------------------------------
+static void test_eat_bite_timing() {
+    using namespace eat_motion;
+    // 3 回ぱくっとする（各 BITE_LEN フレーム）。ぱくっの間は、うなずいている。
+    for (int i = 0; i < BITE_COUNT; ++i) {
+        for (int t = BITE_START[i]; t < BITE_START[i] + BITE_LEN; ++t) assert(isBiting(t));
+        assert(!isBiting(BITE_START[i] - 1));
+        assert(!isBiting(BITE_START[i] + BITE_LEN));
+    }
+    assert(!isBiting(0));
+    // 食べ終えた回数は、ぱくっが終わるたびに 1 つ増える
+    assert(bitesDone(0) == 0);
+    assert(bitesDone(BITE_START[0] + BITE_LEN - 1) == 0);   // 1 回目のぱくっの最中は、まだ
+    assert(bitesDone(BITE_START[0] + BITE_LEN) == 1);
+    assert(bitesDone(BITE_START[1] + BITE_LEN) == 2);
+    assert(bitesDone(BITE_START[2] + BITE_LEN) == 3);
+    assert(bitesDone(40) == 3);
+    // ご飯の動き（40 フレーム）の中に、3 回とも収まる
+    assert(BITE_START[2] + BITE_LEN <= 40);
+}
+
+static void test_eat_lean_only_while_biting() {
+    using namespace eat_motion;
+    int dx, dy;
+    lean(0, 1, &dx, &dy);
+    assert(dx == 0 && dy == 0);                              // ぱくっの外では、傾かない
+    lean(BITE_START[0], 1, &dx, &dy);
+    assert(dx == LEAN_PX && dy == LEAN_PX);                  // 右の草へ：右下へ傾く
+    lean(BITE_START[1], -1, &dx, &dy);
+    assert(dx == -LEAN_PX && dy == LEAN_PX);                 // 左の草へ：左下へ傾く
+}
+
+static void test_eat_direction_flips_at_the_right_half() {
+    using namespace eat_motion;
+    assert(direction(0) == 1);
+    assert(direction(56) == 1);                              // 境目まで、右に草
+    assert(direction(57) == -1);                             // 画面の右半分では、左に草
+    assert(direction(80) == -1);
+}
+
+static void test_eat_tuft_stays_on_screen_and_beside_the_sheep() {
+    using namespace eat_motion;
+    // 羊が歩く範囲（0〜80）のどこにいても、草は画面に収まる。羊の 2 倍スプライト（48px 幅）と重ならない。
+    for (int walk_x = 0; walk_x <= 80; ++walk_x) {
+        const int left = tuftLeft(walk_x);
+        assert(left >= 0 && left + TUFT_W - 1 < background::W);
+        if (direction(walk_x) > 0) assert(left >= walk_x + 44);      // 右に置くときは、羊の右端の外
+        else                        assert(left + TUFT_W - 1 <= walk_x + 4);   // 左に置くときは、羊の左端の外
+    }
+}
+
+static int count_tuft(int bites) {
+    int n = 0;
+    for (int dx = 0; dx < eat_motion::TUFT_W; ++dx)
+        for (int k = 0; k <= eat_motion::TUFT_H + 1; ++k)
+            if (eat_motion::tuftPixel(dx, k, bites)) ++n;
+    return n;
+}
+
+static void test_eat_tuft_shrinks_and_disappears() {
+    using namespace eat_motion;
+    // 食べるたびに草が短くなり、3 回でなくなる
+    assert(count_tuft(0) > count_tuft(1));
+    assert(count_tuft(1) > count_tuft(2));
+    assert(count_tuft(2) > count_tuft(3));
+    assert(count_tuft(3) == 0);
+    assert(count_tuft(0) > 0);
+    // 範囲外の回数でも壊れない（食べ終えたあとは、なし）
+    assert(count_tuft(4) == 0);
+    assert(count_tuft(-1) == count_tuft(0));                  // 負は、まだ食べていない扱い
+    // 葉は地面（k=0）より上にだけ生え、TUFT_H を超えない
+    for (int bites = 0; bites <= BITE_COUNT; ++bites)
+        for (int dx = 0; dx < TUFT_W; ++dx) {
+            assert(!tuftPixel(dx, 0, bites));
+            assert(!tuftPixel(dx, TUFT_H + 1, bites));
+        }
+}
+
 int main() {
     std::setbuf(stdout, nullptr);
     std::srand(42);   // 進化判定の再現性のため固定シード
@@ -1417,6 +1496,11 @@ int main() {
     RUN(test_futon_leaves_the_head_and_shoulders_visible);
     RUN(test_futon_top_edge_is_wavy);
     RUN(test_futon_pattern_is_simple);
+    RUN(test_eat_bite_timing);
+    RUN(test_eat_lean_only_while_biting);
+    RUN(test_eat_direction_flips_at_the_right_half);
+    RUN(test_eat_tuft_stays_on_screen_and_beside_the_sheep);
+    RUN(test_eat_tuft_shrinks_and_disappears);
     RUN(test_sun_is_fixed_in_the_sky);
     RUN(test_sun_shape_and_steady);
     RUN(test_clouds_stay_in_sky_and_drift);

@@ -2,6 +2,7 @@
 #include "sprites.h"
 #include "kana.h"
 #include "font.h"
+#include "eat_motion.h"
 #include "pico/rand.h"
 #include <cstdio>
 #include <cstring>
@@ -123,9 +124,13 @@ void Display::drawMain(const Game& g) {
     int sx = g.walkX();
     int sy = 12 + bob;
 
-    // 羊本体（2 倍スケール = 48x48）
+    // 羊本体（2 倍スケール = 48x48）。ご飯のときは、ぱくっの間、草のほうへ体を傾けてうなずく。
     auto sprite = selectSprite(g, g.face());
-    _oled->drawSprite2x(sprite, sx, sy);
+    const bool eating = (g.action() == Game::Action::FEED);
+    int lean_x = 0, lean_y = 0;
+    if (eating) eat_motion::lean(g.walkTick(), eat_motion::direction(sx), &lean_x, &lean_y);
+    _oled->drawSprite2x(sprite, sx + lean_x, sy + lean_y);
+    if (eating) drawEatTuft(sx, g.walkTick());
 
     // 毛キラキラはモコ・サフォーク系のみ（ワイルド系は wool 概念がないため非表示）。
     // 旧 save / BABY 時代に溜まった wool が YOUNG_WILD に持ち越されてもキラキラを出さない。
@@ -176,6 +181,19 @@ void Display::drawFaceFx(const Game& g, int sx, int sy) {
     }
 }
 
+// ご飯の草の房。羊の横（画面の右半分にいるときは左）に置き、食べるたびに短くする。
+void Display::drawEatTuft(int walk_x, int t) {
+    const int bites = eat_motion::bitesDone(t);
+    const int left  = eat_motion::tuftLeft(walk_x);
+    for (int dx = 0; dx < eat_motion::TUFT_W; ++dx) {
+        for (int k = 1; k <= eat_motion::TUFT_H; ++k) {
+            if (eat_motion::tuftPixel(dx, k, bites)) {
+                _oled->setPixel(left + dx, eat_motion::GROUND_Y - (k - 1), true);
+            }
+        }
+    }
+}
+
 void Display::drawActionFx(const Game& g) {
     if (g.action() == Game::Action::NONE) return;
     int sx = g.walkX();
@@ -183,13 +201,9 @@ void Display::drawActionFx(const Game& g) {
 
     // 2x スケール（48x48）の羊基準。羊は (sx, 12) 〜 (sx+48, 60) を占める。
     switch (g.action()) {
-        case Game::Action::FEED: {
-            // 羊の口元（中央下寄り）に「もぐもぐ」点滅エフェクト。
-            const char* frames[] = { ".", "o", "O", "o" };
-            const char* mark = frames[(t / 5) & 3];
-            _oled->drawText(mark, sx + 44, 36);
+        case Game::Action::FEED:
+            // 草を食べるモーション（うなずきと草の房）は drawMain / drawEatTuft で描く。
             break;
-        }
         case Game::Action::PET: {
             // 羊の頭の上にハート「<3」がふわっと上に浮く。
             int dy = -(t / 4);
