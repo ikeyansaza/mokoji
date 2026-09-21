@@ -19,7 +19,7 @@ import sprites_gen
 
 # 角を持つスプライト → 頭のてっぺんの行。
 # MOUFLON_LONGHORN は体が 1 行下にずれていて、頭頂部が row 6（row 5 は根元の毛束）。
-# YOUNG_WILD は、ベビーの小さな体に角の芽を足した形で、頭頂部が row 7。
+# YOUNG_WILD は、ベビーの小さな体に、頭の上の 3 つの毛束を足した形で、頭頂部が row 7。
 HEAD_TOP = {
     "YOUNG_WILD_F": 7,
     "ADULT_MOUFLON_F": 5,
@@ -33,6 +33,10 @@ HEAD_TOP = {
 HEAD_REGION_ROWS = 6
 # YOUNG_WILD は、耳が頭から離れている（ベビーと同じ作り）ので、耳の行を含めず、角の芽と頭（頭頂 +2 行）だけを見る。
 HEAD_REGION_ROWS_OVERRIDE = {"YOUNG_WILD_F": 3}
+
+# 頭と分かれていてよい塊の数（既定は 1 = 頭と 1 つの塊）。
+# YOUNG_WILD は、頭の上に 3 つの毛束が並び、左右の毛束が頭から離れているので、頭 + 左右の毛束の 3 つ。
+EXPECTED_PARTS = {"YOUNG_WILD_F": 3}
 
 
 def grid(name):
@@ -71,9 +75,10 @@ class HornedSpriteTest(unittest.TestCase):
         for name in HEAD_TOP:
             with self.subTest(sprite=name):
                 comps = components(head_region(name))
+                expected = EXPECTED_PARTS.get(name, 1)
                 self.assertEqual(
-                    len(comps), 1,
-                    f"{name}: {len(comps)} 個に分断（細い線・浮いたピクセルあり）: "
+                    len(comps), expected,
+                    f"{name}: {len(comps)} 個に分断（期待は {expected} 個。細い線・浮いたピクセルあり）: "
                     + str([sorted(c)[0] for c in comps]),
                 )
 
