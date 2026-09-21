@@ -1174,56 +1174,36 @@ static void test_stars_twinkle_but_never_vanish() {
 }
 
 // ---- 昼の空（太陽・雲）-----------------------------------------------------
-static void test_minutes_of_day() {
-    Game g(nullptr);
-    skip_naming(g);
-    assert(g.minutesOfDay() == 8 * 60);                  // 起動は朝 8 時
-    for (uint32_t i = 0; i < Game::TICKS_PER_HOUR / 2; ++i) g.tick();
-    assert(g.minutesOfDay() == 8 * 60 + 30);
-    for (uint32_t i = 0; i < 16 * Game::TICKS_PER_HOUR; ++i) g.tick();
-    assert(g.minutesOfDay() == 30);                      // 24 時をまたいで 0 時 30 分
+static void test_sun_is_fixed_in_the_sky() {
+    // 太陽は動かさない。左上に固定し、焼き付き対策のゆっくりした揺れ（±2px）を足しても、
+    // 画面と空の帯に収まる。月（右上）とは重ならない。
+    constexpr int DRIFT = 2;
+    assert(background::SUN_X - DRIFT >= 0);
+    assert(background::SUN_X + background::SUN_W + DRIFT <= background::W);
+    assert(background::SUN_Y >= 0);
+    assert(background::SUN_Y + background::SUN_H - 1 <= background::SKY_BOTTOM);
+    assert(background::SUN_X + background::SUN_W + DRIFT < background::MOON_X);
 }
 
-static void test_sun_arcs_across_the_sky() {
-    // 6 時〜22 時：左から右へ動き、昼が一番高く、朝夕は低い。空の帯と画面の中に収まる。
-    int prev_x = -1;
-    for (int minutes = 6 * 60; minutes <= 22 * 60; minutes += 30) {
-        int sx, sy;
-        background::sunPosition(minutes, &sx, &sy);
-        assert(sx >= prev_x);
-        prev_x = sx;
-        assert(sx >= 0 && sx + background::SUN_W <= background::W);
-        assert(sy >= 0 && sy + background::SUN_H - 1 <= background::SKY_BOTTOM);
-    }
-    int x, y_morning, y_noon, y_evening;
-    background::sunPosition(6 * 60, &x, &y_morning);
-    background::sunPosition(14 * 60, &x, &y_noon);       // 6 時〜22 時の真ん中
-    background::sunPosition(22 * 60, &x, &y_evening);
-    assert(y_noon < y_morning);
-    assert(y_noon < y_evening);
-}
-
-static int count_sun(int minutes, int frame) {
+static int count_sun(int frame) {
     int n = 0;
     for (int y = 0; y < background::H; ++y)
         for (int x = 0; x < background::W; ++x)
-            if (background::sunPixel(x, y, minutes, frame)) ++n;
+            if (background::sunPixel(x, y, frame)) ++n;
     return n;
 }
 
 static void test_sun_shape_and_twinkle() {
-    const int minutes = 12 * 60;
-    int sx, sy;
-    background::sunPosition(minutes, &sx, &sy);
     // 太陽の外は点かない
     for (int y = 0; y < background::H; ++y) {
         for (int x = 0; x < background::W; ++x) {
-            bool inside = x >= sx && x < sx + background::SUN_W && y >= sy && y < sy + background::SUN_H;
-            if (!inside) assert(!background::sunPixel(x, y, minutes, 0));
+            bool inside = x >= background::SUN_X && x < background::SUN_X + background::SUN_W &&
+                          y >= background::SUN_Y && y < background::SUN_Y + background::SUN_H;
+            if (!inside) assert(!background::sunPixel(x, y, 0));
         }
     }
     // 斜めの光線は、フレームによって消える（きらきら）。本体は消えない。
-    const int c0 = count_sun(minutes, 0), c1 = count_sun(minutes, 1);
+    const int c0 = count_sun(0), c1 = count_sun(1);
     assert(c1 > 0);
     assert(c0 > c1);
 }
@@ -1286,8 +1266,7 @@ int main() {
     RUN(test_grass_ground_line_is_dotted);
     RUN(test_sky_stays_in_the_sky_strip);
     RUN(test_stars_twinkle_but_never_vanish);
-    RUN(test_minutes_of_day);
-    RUN(test_sun_arcs_across_the_sky);
+    RUN(test_sun_is_fixed_in_the_sky);
     RUN(test_sun_shape_and_twinkle);
     RUN(test_clouds_stay_in_sky_and_drift);
     RUN(test_menu_labels_for_young_and_adult);
