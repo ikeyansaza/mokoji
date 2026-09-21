@@ -94,5 +94,52 @@ class HornedSpriteTest(unittest.TestCase):
                 )
 
 
+# 増毛版 → 元になる通常版
+FLUFFY_BASE = {
+    "ADULT_MERINO_FLUFFY_F": "ADULT_MERINO_F",
+    "ADULT_CORRIEDALE_FLUFFY_F": "ADULT_CORRIEDALE_F",
+    "ADULT_LINCOLN_FLUFFY_F": "ADULT_LINCOLN_F",
+    "ADULT_SUFFOLK_FLUFFY_F": "ADULT_SUFFOLK_F",
+    "ADULT_HAMPSHIRE_FLUFFY_F": "ADULT_HAMPSHIRE_F",
+}
+
+
+def on_pixels(rows):
+    return {(y, x) for y, r in enumerate(rows) for x, c in enumerate(r) if c == "#"}
+
+
+class FluffySpriteTest(unittest.TestCase):
+    def test_fluffy_keeps_the_base_design(self):
+        # 増毛版は「通常版に毛を足したもの」。通常版の絵が欠けたり別の絵になったりしてはいけない
+        # （サフォーク・ハンプシャーの増毛版が、別の基本形から作られて通常版と違う絵になっていた）
+        for name, base in FLUFFY_BASE.items():
+            with self.subTest(sprite=name):
+                missing = on_pixels(grid(base)) - on_pixels(grid(name))
+                self.assertEqual(missing, set(), f"{name}: {base} の絵が {len(missing)} px 欠けている")
+
+    def test_fluffy_is_fluffier(self):
+        # 毛が増えていること
+        for name, base in FLUFFY_BASE.items():
+            with self.subTest(sprite=name):
+                self.assertGreater(len(on_pixels(grid(name))), len(on_pixels(grid(base))))
+
+    def test_wool_is_attached_to_the_body(self):
+        # 毛が体から浮いた点・棒になると、毛に見えない。通常版より塊（4 近傍）が増えないこと。
+        # 毛が体の別々のパーツ（耳・腕など）をつなげて塊が減るのは、毛が体につながっている証拠なので構わない。
+        for name, base in FLUFFY_BASE.items():
+            with self.subTest(sprite=name):
+                self.assertLessEqual(len(components(grid(name))), len(components(grid(base))),
+                                     f"{name}: 毛が体から浮いている")
+
+    def test_wool_is_symmetric(self):
+        # 通常版の行が左右対称なら、増毛版の行も左右対称であること（対称軸は col 11）
+        for name, base in FLUFFY_BASE.items():
+            with self.subTest(sprite=name):
+                rows, base_rows = grid(name), grid(base)
+                for y, (r, b) in enumerate(zip(rows, base_rows)):
+                    if b[:23] == b[:23][::-1]:
+                        self.assertEqual(r[:23], r[:23][::-1], f"{name} row {y}: {r}")
+
+
 if __name__ == "__main__":
     unittest.main()

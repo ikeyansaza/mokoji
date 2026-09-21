@@ -44,12 +44,21 @@ def _flip(sp):
     return out
 
 
-def _overlay(base_rows, mods):
-    """base_rows に mods を適用して新しい rows tuple を返す。
-    mods は (row_idx, col_idx, char) のリスト。"""
+def _halo(base_rows):
+    """通常版 base_rows の体（row 10〜17）の左右の端の外側に 1px ずつ毛を足した rows tuple を返す（増毛版）。
+
+    端は行ごとに検出するので、毛は必ず体につながり、通常版の絵は変わらない。
+    毛は各行の左右の端に足すため、通常版の行が左右対称なら増毛版も対称になる。
+    row 9（耳）と足元（row 18〜）には足さない。"""
     out = [list(r) for r in base_rows]
-    for r, c, ch in mods:
-        out[r][c] = ch
+    for y in range(10, 18):
+        xs = [i for i, c in enumerate(base_rows[y]) if c == '#']
+        if not xs:
+            continue
+        if xs[0] > 0:
+            out[y][xs[0] - 1] = '#'
+        if xs[-1] < 23:
+            out[y][xs[-1] + 1] = '#'
     return tuple(''.join(row) for row in out)
 
 
@@ -85,48 +94,8 @@ HITSUJI = (
 )
 
 # ============================================================
-# 装飾パターン（mods のリスト）
+# 装飾パターン（現在は未使用。頭上に角を描いていた旧案のメモ）
 # ============================================================
-
-# モコ系：体外周のフサ（量を段階的に増やす）
-_FLUFF_TINY = [
-    (12, 1, '#'), (12, 22, '#'),
-    (14, 1, '#'), (14, 22, '#'),
-]
-_FLUFF_SMALL = [
-    (11, 1, '#'), (11, 22, '#'),
-    (12, 1, '#'), (12, 22, '#'),
-    (13, 1, '#'), (13, 22, '#'),
-    (14, 1, '#'), (14, 22, '#'),
-]
-_FLUFF_MEDIUM = [
-    (10, 1, '#'), (10, 22, '#'),
-    (11, 0, '#'), (11, 1, '#'), (11, 22, '#'), (11, 23, '#'),
-    (12, 1, '#'), (12, 22, '#'),
-    (13, 0, '#'), (13, 1, '#'), (13, 22, '#'), (13, 23, '#'),
-    (14, 1, '#'), (14, 22, '#'),
-    (15, 1, '#'), (15, 22, '#'),
-]
-_FLUFF_LARGE = [
-    (10, 0, '#'), (10, 1, '#'), (10, 22, '#'), (10, 23, '#'),
-    (11, 0, '#'), (11, 1, '#'), (11, 22, '#'), (11, 23, '#'),
-    (12, 0, '#'), (12, 1, '#'), (12, 22, '#'), (12, 23, '#'),
-    (13, 0, '#'), (13, 1, '#'), (13, 22, '#'), (13, 23, '#'),
-    (14, 0, '#'), (14, 1, '#'), (14, 22, '#'), (14, 23, '#'),
-    (15, 0, '#'), (15, 1, '#'), (15, 22, '#'), (15, 23, '#'),
-]
-
-# サフォーク系：目をさらに細く（HITSUJI の 3px 線 → 1px 線）
-_NARROW_EYES = [
-    (7, 8, '#'), (7, 9, '#'),     # 左目: cols 8-10 → col 10 のみ dark
-    (7, 13, '#'), (7, 14, '#'),   # 右目: cols 12-14 → col 12 のみ dark
-]
-
-# ハンプシャー専用：脚に小さな点（足が黒っぽい雰囲気）
-_DARK_LEGS = [
-    (15, 6, '#'),  (15, 17, '#'),
-    (16, 6, '#'),  (16, 17, '#'),
-]
 
 # ワイルド系：角（耳の上に追加）
 _HORN_TINY = [
@@ -505,26 +474,27 @@ ADULT_BIGHORN_L = _img(*BIGHORN)
 ADULT_BIGHORN_R = _flip(ADULT_BIGHORN_L)
 
 # Stage 4: SPECIAL
-# 増毛期：MERINO/CORRIEDALE は手描き base に追加フサを overlay（後でユーザーが手描き差し替え予定）
-ADULT_MERINO_FLUFFY_F = _img(*_overlay(MERINO, _FLUFF_LARGE))
-ADULT_MERINO_FLUFFY_L = _img(*_overlay(MERINO, _FLUFF_LARGE))
+# 増毛期：通常版の体の外周に毛を 1px 足す（_halo）。毛は体につながり、通常版の絵は変えない。
+ADULT_MERINO_FLUFFY_F = _img(*_halo(MERINO))
+ADULT_MERINO_FLUFFY_L = _img(*_halo(MERINO))
 ADULT_MERINO_FLUFFY_R = _flip(ADULT_MERINO_FLUFFY_L)
 
-ADULT_CORRIEDALE_FLUFFY_F = _img(*_overlay(CORRIEDALE, _FLUFF_MEDIUM))
-ADULT_CORRIEDALE_FLUFFY_L = _img(*_overlay(CORRIEDALE, _FLUFF_MEDIUM))
+ADULT_CORRIEDALE_FLUFFY_F = _img(*_halo(CORRIEDALE))
+ADULT_CORRIEDALE_FLUFFY_L = _img(*_halo(CORRIEDALE))
 ADULT_CORRIEDALE_FLUFFY_R = _flip(ADULT_CORRIEDALE_FLUFFY_L)
 
-ADULT_LINCOLN_FLUFFY_F = _img(*_overlay(LINCOLN, _FLUFF_MEDIUM))
-ADULT_LINCOLN_FLUFFY_L = _img(*_overlay(LINCOLN, _FLUFF_MEDIUM))
+ADULT_LINCOLN_FLUFFY_F = _img(*_halo(LINCOLN))
+ADULT_LINCOLN_FLUFFY_L = _img(*_halo(LINCOLN))
 ADULT_LINCOLN_FLUFFY_R = _flip(ADULT_LINCOLN_FLUFFY_L)
 
-ADULT_SUFFOLK_FLUFFY_F = _img(*_overlay(HITSUJI, _NARROW_EYES + _FLUFF_MEDIUM))
-ADULT_SUFFOLK_FLUFFY_L = _img(*_overlay(HITSUJI, _NARROW_EYES + _FLUFF_MEDIUM))
+ADULT_SUFFOLK_FLUFFY_F = _img(*_halo(SUFFOLK))
+ADULT_SUFFOLK_FLUFFY_L = _img(*_halo(SUFFOLK))
 ADULT_SUFFOLK_FLUFFY_R = _flip(ADULT_SUFFOLK_FLUFFY_L)
 
-ADULT_HAMPSHIRE_FLUFFY_F = _img(*_overlay(HITSUJI, _NARROW_EYES + _DARK_LEGS + _FLUFF_MEDIUM))
-ADULT_HAMPSHIRE_FLUFFY_L = _img(*_overlay(HITSUJI, _NARROW_EYES + _DARK_LEGS + _FLUFF_MEDIUM))
+ADULT_HAMPSHIRE_FLUFFY_F = _img(*_halo(HAMPSHIRE))
+ADULT_HAMPSHIRE_FLUFFY_L = _img(*_halo(HAMPSHIRE))
 ADULT_HAMPSHIRE_FLUFFY_R = _flip(ADULT_HAMPSHIRE_FLUFFY_L)
+
 
 # 角長期：MOUFLON_LONGHORN（角が下へ長く伸び、先端が外へ跳ねて耳の脇へ垂れる、lean body 維持）
 # 体は MOUFLON より 1 行下（頭頂部が row 6）。角も 1 行下げてある。row 5 は根元の毛束 + 角の上の弧。
@@ -591,4 +561,4 @@ ADULT_BIGHORN_LONGHORN_R = _flip(ADULT_BIGHORN_LONGHORN_L)
 
 
 # ロード後はヘルパーは不要（RAM を節約）
-del _r, _img, _flip, _overlay
+del _r, _img, _flip, _halo
