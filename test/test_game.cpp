@@ -1292,6 +1292,89 @@ static void test_time_stops_during_first_naming() {
     assert(g.stage() == Game::Stage::BABY);
 }
 
+// ---- 布団（就寝中の画面）----------------------------------------------------
+static void test_futon_geometry() {
+    using namespace background;
+    // 羊（2 倍で x=40〜88、揺れ ±2px で 38〜90）を横から包む幅
+    assert(FUTON_LEFT < 38 && FUTON_RIGHT > 90);
+    assert(FUTON_LEFT >= 2 && FUTON_RIGHT + 2 < W);          // 揺れを足しても画面に収まる
+    // 草の地面の真上に敷く（草と重ならず、隙間もない）
+    assert(FUTON_BOTTOM + 1 == GRASS_TOP);
+    // 空の帯（月・星）より下、羊の足元（y<=53）より上から始まる
+    assert(FUTON_TOP > SKY_BOTTOM);
+}
+
+static void test_futon_mask_and_pattern_stay_inside() {
+    using namespace background;
+    for (int y = 0; y < H; ++y) {
+        for (int x = 0; x < W; ++x) {
+            const bool mask = futonMask(x, y), lit = futonPixel(x, y);
+            if (lit) assert(mask);                            // 模様は布団の中だけ
+            if (mask) {
+                assert(x >= FUTON_LEFT && x <= FUTON_RIGHT);
+                assert(y >= FUTON_TOP && y <= FUTON_BOTTOM);
+            }
+        }
+    }
+}
+
+static void test_futon_leaves_the_head_and_shoulders_visible() {
+    // 布団の上端より上は、何も覆わない（頭と肩が出る）
+    using namespace background;
+    for (int y = 0; y < FUTON_TOP; ++y)
+        for (int x = 0; x < W; ++x)
+            assert(!futonMask(x, y));
+    // 下の縁までは、全幅を覆う
+    for (int x = FUTON_LEFT; x <= FUTON_RIGHT; ++x) assert(futonMask(x, FUTON_BOTTOM));
+}
+
+static void test_futon_top_edge_is_wavy() {
+    // 上の縁は波打つ（列によって上端の高さが違う）
+    using namespace background;
+    int min_top = H, max_top = 0;
+    for (int x = FUTON_LEFT; x <= FUTON_RIGHT; ++x) {
+        int top = -1;
+        for (int y = 0; y < H; ++y) if (futonMask(x, y)) { top = y; break; }
+        assert(top >= 0);
+        if (top < min_top) min_top = top;
+        if (top > max_top) max_top = top;
+    }
+    assert(max_top > min_top);
+    assert(max_top - min_top <= 2);                          // 大きくうねらず、なだらかな 2px 以内
+}
+
+static void test_futon_pattern_is_simple() {
+    // 縁と縫い目（点線 2 本）だけの、シンプルな模様。布団の面積の 10%〜35% が点く。
+    using namespace background;
+    int mask = 0, lit = 0;
+    for (int y = 0; y < H; ++y)
+        for (int x = 0; x < W; ++x) {
+            if (futonMask(x, y)) ++mask;
+            if (futonPixel(x, y)) ++lit;
+        }
+    assert(mask > 0);
+    assert(lit * 100 >= mask * 10);
+    assert(lit * 100 <= mask * 35);
+    // 縁は、上の縁・下の縁・左右の縁がある
+    assert(futonPixel(FUTON_LEFT, FUTON_TOP + 5));
+    assert(futonPixel(FUTON_RIGHT, FUTON_TOP + 5));
+    int bottom_lit = 0;
+    for (int x = FUTON_LEFT; x <= FUTON_RIGHT; ++x) if (futonPixel(x, FUTON_BOTTOM)) ++bottom_lit;
+    assert(bottom_lit == FUTON_RIGHT - FUTON_LEFT + 1);      // 下の縁は途切れない
+    // 縫い目は、2 本の点線（3px 描いて 2px 空ける）
+    for (int row : { FUTON_TOP + 8, FUTON_TOP + 13 }) {
+        // 左の縁（+0）から数えて、+1〜+2 が点き、+3〜+4 が空き、+5〜+7 が点き、+8〜+9 が空く
+        assert(futonPixel(FUTON_LEFT + 1, row));
+        assert(futonPixel(FUTON_LEFT + 2, row));
+        assert(!futonPixel(FUTON_LEFT + 3, row));
+        assert(!futonPixel(FUTON_LEFT + 4, row));
+        assert(futonPixel(FUTON_LEFT + 5, row));
+        assert(futonPixel(FUTON_LEFT + 7, row));
+        assert(!futonPixel(FUTON_LEFT + 8, row));
+        assert(!futonPixel(FUTON_LEFT + 9, row));
+    }
+}
+
 int main() {
     std::setbuf(stdout, nullptr);
     std::srand(42);   // 進化判定の再現性のため固定シード
@@ -1329,6 +1412,11 @@ int main() {
     RUN(test_grass_ground_line_is_dotted);
     RUN(test_sky_stays_in_the_sky_strip);
     RUN(test_stars_twinkle_but_never_vanish);
+    RUN(test_futon_geometry);
+    RUN(test_futon_mask_and_pattern_stay_inside);
+    RUN(test_futon_leaves_the_head_and_shoulders_visible);
+    RUN(test_futon_top_edge_is_wavy);
+    RUN(test_futon_pattern_is_simple);
     RUN(test_sun_is_fixed_in_the_sky);
     RUN(test_sun_shape_and_steady);
     RUN(test_clouds_stay_in_sky_and_drift);

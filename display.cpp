@@ -13,6 +13,13 @@ Display::Display(SSD1306* oled) : _oled(oled) {
             if (background::grassPixel(x, background::GRASS_TOP + b)) grass |= uint8_t(1u << b);
         }
         _grass_cols[x] = grass;
+        uint32_t fmask = 0, flit = 0;
+        for (int b = 0; b <= background::FUTON_BOTTOM - background::FUTON_TOP; ++b) {
+            if (background::futonMask(x, background::FUTON_TOP + b))  fmask |= (1u << b);
+            if (background::futonPixel(x, background::FUTON_TOP + b)) flit  |= (1u << b);
+        }
+        _futon_mask[x] = fmask;
+        _futon_lit[x]  = flit;
         for (int frame = 0; frame < 2; ++frame) {
             uint32_t sky = 0;
             for (int y = 0; y <= background::SKY_BOTTOM; ++y) {
@@ -36,6 +43,21 @@ void Display::drawGrass(int dx) {
         const uint8_t bits = _grass_cols[x];
         for (int b = 0; b < background::H - background::GRASS_TOP; ++b) {
             if ((bits >> b) & 1u) _oled->setPixel(px, background::GRASS_TOP + b, true);
+        }
+    }
+}
+
+// 布団（掛け布団）。羊の手前に描く：布団が覆う範囲をいったん消してから、縁と縫い目を描く。
+// dx は羊と同じ揺れ（焼き付き対策）を足して、布団の縁が羊の体の上を滑らないようにする。
+void Display::drawFuton(int dx) {
+    for (int x = background::FUTON_LEFT; x <= background::FUTON_RIGHT; ++x) {
+        const int px = x + dx;
+        if (px < 0 || px >= background::W) continue;
+        const uint32_t mask = _futon_mask[x], lit = _futon_lit[x];
+        for (int b = 0; b <= background::FUTON_BOTTOM - background::FUTON_TOP; ++b) {
+            const int y = background::FUTON_TOP + b;
+            if ((mask >> b) & 1u) _oled->setPixel(px, y, false);
+            if ((lit  >> b) & 1u) _oled->setPixel(px, y, true);
         }
     }
 }
@@ -378,6 +400,9 @@ void Display::drawSleep(const Game& g) {
     // 見えるのを防ぐ）。羊の中央を画面中央寄りに配置。
     auto sprite = selectSprite(g, Game::Face::FRONT);
     _oled->drawSprite2x(sprite, 40 + dx, 12);
+
+    // 布団：羊の体の下半分を覆う（頭と肩は出る）。羊の手前に描く。
+    drawFuton(dx);
 
     // "zzz..." は左上に小さく
     _oled->drawText("zzz", 0, 0);

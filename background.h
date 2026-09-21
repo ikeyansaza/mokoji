@@ -36,6 +36,14 @@ bool sunPixel(int x, int y);
 // 雲：2 つがゆっくり右へ流れ、右端を出たら左端から戻る。tick は Game::ageTicks（約 50ms ごと）。
 bool cloudPixel(int x, int y, int tick);
 
+// 布団（就寝中の画面）：羊の体の下半分を覆う掛け布団。草の地面の真上に敷き、頭と肩は出る。
+// 羊のスプライトの手前に描く：先に羊を描き、futonMask の範囲を消してから、futonPixel を描く。
+// 上の縁は 6px ごとのなだらかな波（2px 以内）、模様は縁と縫い目の点線 2 本だけのシンプルなもの。
+constexpr int FUTON_LEFT = 22, FUTON_RIGHT = 106;
+constexpr int FUTON_TOP  = 38, FUTON_BOTTOM = 55;   // FUTON_BOTTOM + 1 == GRASS_TOP
+bool futonMask(int x, int y);     // 羊を覆う範囲
+bool futonPixel(int x, int y);    // 布団の縁と縫い目（点く）
+
 // 星（1px の点）。3 つに 1 つは十字（＋）で、frame（0/1 など）が変わると十字になる星が入れ替わる。
 // 星の中心は、どのフレームでも点いている。
 bool starPixel(int x, int y, int frame);
