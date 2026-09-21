@@ -13,7 +13,7 @@ MOKOJI — Raspberry Pi Pico + SSD1306 OLED で動く携帯型の羊育成ゲー
 # 実機ファーム（.uf2）
 cmake -B build -DPICO_SDK_PATH=$HOME/pico-sdk && cmake --build build -j
 
-# 進化検証用（1 game-hour = 3 秒）
+# 進化検証用（1 game-hour = 3 秒。メイン画面で LEFT 長押し = 姿を進化の順に 1 つ進める）
 cmake -B build_fast -DPICO_SDK_PATH=$HOME/pico-sdk -DDEBUG_FAST=ON && cmake --build build_fast -j
 
 # 書き込み

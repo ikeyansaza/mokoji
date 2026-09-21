@@ -1911,12 +1911,102 @@ static void test_ending_song_without_sound_does_not_crash() {
     assert(g.screen() == Game::Screen::NAMING);
 }
 
+// ---- 検証用：LEFT 長押しで、進化の順番に 1 つずつ切り替える（DEBUG_FAST / HOST_TEST のみ） ----
+static void cycle_form(Game& g) { g.onButton(Game::Button::LEFT_LONG); }
+
+static void test_debug_cycle_walks_every_form_in_order() {
+    Game g(nullptr);
+    skip_naming(g);
+    assert(g.stage() == Game::Stage::BABY);
+    struct Form { Game::Stage stage; Game::Breed breed; };
+    const Form order[] = {
+        { Game::Stage::YOUNG_MOKO,    Game::Breed::NONE },
+        { Game::Stage::ADULT,         Game::Breed::CORRIEDALE },
+        { Game::Stage::ADULT,         Game::Breed::LINCOLN },
+        { Game::Stage::YOUNG_SUFFOLK, Game::Breed::NONE },
+        { Game::Stage::ADULT,         Game::Breed::SUFFOLK },
+        { Game::Stage::ADULT,         Game::Breed::HAMPSHIRE },
+        { Game::Stage::YOUNG_WILD,    Game::Breed::NONE },
+        { Game::Stage::ADULT,         Game::Breed::MOUFLON },
+        { Game::Stage::ADULT,         Game::Breed::BIGHORN },
+        { Game::Stage::BABY,          Game::Breed::NONE },      // 1 周して、ベビーへ戻る
+        { Game::Stage::YOUNG_MOKO,    Game::Breed::NONE },
+    };
+    for (const Form& f : order) {
+        cycle_form(g);
+        assert(g.stage() == f.stage);
+        assert(g.breed() == f.breed);
+    }
+}
+
+static void test_debug_cycle_keeps_the_form_from_evolving_on_its_own() {
+    // 切り替えた姿は、その段階の年齢にそろえる。年齢がずれていると、次の tick で勝手に進化してしまう
+    Game g(nullptr);
+    skip_naming(g);
+    for (int i = 0; i < 10; ++i) {
+        cycle_form(g);
+        const Game::Stage stage = g.stage();
+        const Game::Breed breed = g.breed();
+        for (int t = 0; t < 100; ++t) g.tick();
+        assert(g.stage() == stage);
+        assert(g.breed() == breed);
+    }
+}
+
+static void test_debug_cycle_keeps_the_sheep_alive_and_fed() {
+    // 姿を確かめている間に、寿命や空腹で死なないようにする（寿命は最大、空腹・幸福は満タン）
+    Game g(nullptr);
+    skip_naming(g);
+    for (int i = 0; i < 3; ++i) cycle_form(g);            // リンカーン（成体、7 日め）
+    const GameSaveData d = g.saveData();
+    assert(d.lifespan_days == 255);
+    assert(d.hunger == 100 && d.happy == 100);
+    for (uint32_t t = 0; t < 3 * Game::TICKS_PER_DAY; ++t) g.tick();
+    assert(g.screen() != Game::Screen::GRAVE);
+    assert(g.breed() == Game::Breed::LINCOLN);
+}
+
+static void test_debug_cycle_resets_menu_cursor_and_wool() {
+    Game g(nullptr);
+    skip_naming(g);
+    cycle_form(g);                                         // 若羊（メニュー 5 項目）
+    cycle_form(g);                                         // 成体（メニュー 6 項目）
+    assert(g.menuCount() == 6);
+    g.onButton(Game::Button::CENTER);                      // メニューを開く
+    for (int i = 0; i < 5; ++i) g.onButton(Game::Button::RIGHT);
+    assert(g.menuCursor() == 5);
+    g.onButton(Game::Button::LEFT_LONG);                   // メニューの中では切り替えない
+    assert(g.breed() == Game::Breed::CORRIEDALE);
+    g.onButton(Game::Button::CENTER);                      // 「もどる」
+    cycle_form(g);
+    assert(g.breed() == Game::Breed::LINCOLN);
+    assert(g.wool() == 0);
+    assert(g.menuCursor() == 0);
+}
+
+static void test_debug_cycle_treats_old_merino_as_corriedale() {
+    Game base(nullptr);
+    skip_naming(base);
+    GameSaveData d = base.saveData();
+    d.stage = uint8_t(Game::Stage::ADULT);
+    d.breed = uint8_t(Game::Breed::MERINO);
+    d.age_ticks = 7 * Game::TICKS_PER_DAY;
+    Game g(nullptr, &d);
+    cycle_form(g);
+    assert(g.breed() == Game::Breed::LINCOLN);             // コリデールの次
+}
+
 int main() {
     std::setbuf(stdout, nullptr);
     std::srand(42);   // 進化判定の再現性のため固定シード
     std::fprintf(stderr, "\n=== game.cpp host tests (HOST_TEST=on) ===\n\n");
 
     RUN(test_default_state);
+    RUN(test_debug_cycle_walks_every_form_in_order);
+    RUN(test_debug_cycle_keeps_the_form_from_evolving_on_its_own);
+    RUN(test_debug_cycle_keeps_the_sheep_alive_and_fed);
+    RUN(test_debug_cycle_resets_menu_cursor_and_wool);
+    RUN(test_debug_cycle_treats_old_merino_as_corriedale);
     RUN(test_naming_preset_select);
     RUN(test_naming_manual_input);
     RUN(test_naming_long_press_backspace);

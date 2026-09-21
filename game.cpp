@@ -390,8 +390,12 @@ void Game::onButton(Button btn) {
     // 行動の可否は doAction 側で判定する。
     if (_sleeping && _screen != Screen::MAIN && _screen != Screen::MENU && _screen != Screen::PROFILE) return;
 
-    // LEFT_LONG はバックスペース専用イベント。NAMING の入力中以外は無視。
+    // LEFT_LONG はバックスペース専用イベント。NAMING の入力中以外は無視
+    // （検証用ビルドでは、メイン画面での LEFT_LONG が、姿を次へ進める）。
     if (btn == Button::LEFT_LONG) {
+#if defined(DEBUG_FAST) || defined(HOST_TEST)
+        if (_screen == Screen::MAIN) debugNextForm();
+#endif
         if (_screen == Screen::NAMING &&
             (_naming_mode == NamingMode::INPUT_ROW ||
              _naming_mode == NamingMode::INPUT_CHAR)) {
@@ -588,6 +592,47 @@ void Game::evolveAdult() {
     _dirty = true;
     queueSfx(Sfx::HAPPY);
 }
+
+#if defined(DEBUG_FAST) || defined(HOST_TEST)
+void Game::debugNextForm() {
+    // 進化の順。年齢は、その段階が始まる日（ベビー 0 日・若羊 3 日・成体 7 日）にそろえる。
+    // ずれていると、次の tick で自然に進化してしまう。日の頭にそろえるので、時刻は朝 8 時のまま（就寝しない）。
+    struct Form { Stage stage; Breed breed; uint32_t days; };
+    static const Form ORDER[] = {
+        { Stage::BABY,          Breed::NONE,       0 },
+        { Stage::YOUNG_MOKO,    Breed::NONE,       3 },
+        { Stage::ADULT,         Breed::CORRIEDALE, 7 },
+        { Stage::ADULT,         Breed::LINCOLN,    7 },
+        { Stage::YOUNG_SUFFOLK, Breed::NONE,       3 },
+        { Stage::ADULT,         Breed::SUFFOLK,    7 },
+        { Stage::ADULT,         Breed::HAMPSHIRE,  7 },
+        { Stage::YOUNG_WILD,    Breed::NONE,       3 },
+        { Stage::ADULT,         Breed::MOUFLON,    7 },
+        { Stage::ADULT,         Breed::BIGHORN,    7 },
+    };
+    constexpr int N = int(sizeof(ORDER) / sizeof(ORDER[0]));
+
+    // 今の姿の位置。古いセーブの MERINO は、進化先から外れているので、コリデールの位置として扱う
+    const Breed cur_breed = (_breed == Breed::MERINO) ? Breed::CORRIEDALE : _breed;
+    int cur = 0;
+    for (int i = 0; i < N; ++i) {
+        if (ORDER[i].stage == _stage && ORDER[i].breed == cur_breed) { cur = i; break; }
+    }
+    const Form& next = ORDER[(cur + 1) % N];
+
+    _stage       = next.stage;
+    _breed       = next.breed;
+    _age_ticks   = next.days * TICKS_PER_DAY;
+    _lifespan_days = 255;   // 姿を確かめている間に、天寿で死なない
+    _hunger      = 100;
+    _happy       = 100;
+    _wool        = 0;
+    _horn        = 0;
+    _menu_cursor = 0;       // 若羊 5 項目・成体 6 項目で、カーソルの意味がずれないよう先頭へ
+    _dirty       = true;
+    queueSfx(Sfx::HAPPY);
+}
+#endif
 
 void Game::die(DeathCause cause) {
     GraveRecord rec{};

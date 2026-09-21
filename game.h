@@ -82,6 +82,11 @@ public:
 
     void tick();
     void onButton(Button btn);
+#if defined(DEBUG_FAST) || defined(HOST_TEST)
+    // 検証用：姿を進化の順（ベビー → モコ系の若羊・コリデール・リンカーン → サフォーク系 → ワイルド系）に
+    // 1 つ進める。最後の次はベビーへ戻る。メイン画面で LEFT 長押し。
+    void debugNextForm();
+#endif
     GameSaveData saveData() const;
 
     // 描画用アクセサ
