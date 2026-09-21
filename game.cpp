@@ -335,6 +335,7 @@ void Game::updateWalk() {
         if (_action == Action::PET) petCues();
         int limit = ACTION_TICKS;
         if (_action == Action::FEED) limit = FEED_ACTION_TICKS;
+        if (_action == Action::SHEAR || _action == Action::POLISH) limit = TRIM_ACTION_TICKS;
         if (_walk_tick > limit) _action = Action::NONE;
         return;
     }
@@ -484,6 +485,7 @@ void Game::doAction(Action act) {
         case Action::SHEAR:
             // モコ系・サフォーク系のみ実効。それ以外は no-op。
             if (_wool > 10) {
+                _action_was_grown = isFluffy();
                 _wool = 0;
                 _happy = std::min(100, _happy + 10);
                 _action = Action::SHEAR;
@@ -494,6 +496,7 @@ void Game::doAction(Action act) {
         case Action::POLISH:
             // ワイルド系のみ実効（角を磨いて短くする）
             if (_horn > 10) {
+                _action_was_grown = isLonghorn();
                 _horn = 0;
                 _happy = std::min(100, _happy + 10);
                 _action = Action::POLISH;

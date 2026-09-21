@@ -4,6 +4,8 @@
 #include "font.h"
 #include "eat_motion.h"
 #include "pet_motion.h"
+#include "shear_motion.h"
+#include "polish_motion.h"
 #include <cstdio>
 #include <cstring>
 
@@ -125,14 +127,23 @@ void Display::drawMain(const Game& g) {
     int sy = 12 + bob;
 
     // 羊本体（2 倍スケール = 48x48）。ご飯のときは、ぱくっの間、ロールのほうへ体を傾けてうなずく。
-    auto sprite = selectSprite(g, g.face());
+    // 毛刈り・角研ぎは、刈り終える（研ぎ終える）まで、ふさふさ・角長の絵のまま。終えたところで通常の絵に切り替わる。
+    const int t = g.walkTick();
+    const bool shearing  = (g.action() == Game::Action::SHEAR);
+    const bool polishing = (g.action() == Game::Action::POLISH);
+    const bool grown = g.actionWasGrown() &&
+                       ((shearing && !shear_motion::woolCut(t)) || (polishing && !polish_motion::filed(t)));
+    auto sprite = selectSprite(g, g.face(), grown);
     const bool eating = (g.action() == Game::Action::FEED);
     int lean_x = 0, lean_y = 0;
-    if (eating) eat_motion::lean(g.walkTick(), eat_motion::direction(sx), &lean_x, &lean_y);
+    if (eating) eat_motion::lean(t, eat_motion::direction(sx), &lean_x, &lean_y);
     // 撫でるときは、撫でるたびに羊が 1px 弾む
-    if (g.action() == Game::Action::PET) lean_y = pet_motion::bounce(g.walkTick());
+    if (g.action() == Game::Action::PET) lean_y = pet_motion::bounce(t);
+    // 角研ぎは、幹へ体を押しつけては戻す
+    if (polishing) polish_motion::lean(t, polish_motion::direction(sx), &lean_x, &lean_y);
     _oled->drawSprite2x(sprite, sx + lean_x, sy + lean_y);
-    if (eating) drawEatBale(sx, g.walkTick());
+    if (eating) drawEatBale(sx, t);
+    if (polishing) drawTrunk(sx);
 
     drawActionFx(g);
 
@@ -192,6 +203,25 @@ void Display::drawEatBale(int walk_x, int t) {
     }
 }
 
+// 角研ぎの木の幹。羊の横（画面の右半分にいるときは左）に、最初から立っている。
+void Display::drawTrunk(int walk_x) {
+    const int left = polish_motion::trunkLeft(walk_x);
+    for (int dy = 0; dy < polish_motion::TRUNK_H; ++dy) {
+        for (int dx = 0; dx < polish_motion::TRUNK_W; ++dx) {
+            if (polish_motion::trunkPixel(dx, dy)) _oled->setPixel(left + dx, polish_motion::TRUNK_TOP + dy, true);
+        }
+    }
+}
+
+void Display::drawOutlined(bool (*pixel)(int, int), int w, int h, int x, int y) {
+    _oled->fillRect(x - 1, y - 1, w + 2, h + 2, false);
+    for (int dy = 0; dy < h; ++dy) {
+        for (int dx = 0; dx < w; ++dx) {
+            if (pixel(dx, dy)) _oled->setPixel(x + dx, y + dy, true);
+        }
+    }
+}
+
 void Display::drawActionFx(const Game& g) {
     if (g.action() == Game::Action::NONE) return;
     int sx = g.walkX();
@@ -215,9 +245,28 @@ void Display::drawActionFx(const Game& g) {
             break;
         }
         case Game::Action::SHEAR: {
-            // 羊の上で「><」（ハサミ）がパチパチ動く。
-            const char* mark = ((t / 4) & 1) ? "><" : "X.";
-            _oled->drawText(mark, sx + 16, 4);
+            // はさみが体の上を 2 回動き、落ちた毛の束が地面にたまる。
+            using namespace shear_motion;
+            for (int i = 0; i < TUFT_COUNT; ++i) {
+                int x, y;
+                if (tuft(i, sx, t, &x, &y)) drawOutlined(tuftPixel, TUFT_W, TUFT_H, x, y);
+            }
+            if (clipperShown(t)) {
+                const int x = clipperX(sx, t), y = clipperY(t);
+                if (clipperOpen(t)) drawOutlined([](int dx, int dy) { return scissorsPixel(true, dx, dy); },
+                                                 SCISSORS_W, SCISSORS_H, x, y);
+                else                drawOutlined([](int dx, int dy) { return scissorsPixel(false, dx, dy); },
+                                                 SCISSORS_W, SCISSORS_H, x, y);
+            }
+            break;
+        }
+        case Game::Action::POLISH: {
+            // 幹に押しつけるたびに、角の先で火花が散る（幹と羊の体は drawMain で描く）。
+            if (polish_motion::sparkShown(t)) {
+                int x, y;
+                polish_motion::sparkPos(sx, &x, &y);
+                drawOutlined(polish_motion::sparkPixel, polish_motion::SPARK_W, polish_motion::SPARK_H, x, y);
+            }
             break;
         }
         case Game::Action::MINI: {
@@ -442,15 +491,15 @@ void Display::drawGrave(const Game& g) {
     _oled->drawText("ボタンをおす", 0, 56);
 }
 
-const uint8_t (*Display::selectSprite(const Game& g, Game::Face face))[3] {
+const uint8_t (*Display::selectSprite(const Game& g, Game::Face face, bool grown))[3] {
     using namespace sprites;
 
     const uint8_t (*L)[3] = BABY_L;
     const uint8_t (*F)[3] = BABY_F;
     const uint8_t (*R)[3] = BABY_R;
 
-    bool fluffy   = g.isFluffy();
-    bool longhorn = g.isLonghorn();
+    bool fluffy   = g.isFluffy() || grown;
+    bool longhorn = g.isLonghorn() || grown;
 
     switch (g.stage()) {
         case Game::Stage::BABY:

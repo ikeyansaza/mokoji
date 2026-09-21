@@ -62,6 +62,8 @@ public:
     // ご飯は、ぱくっを 1 秒おきに 3 回するので、他より長い。
     static constexpr int  ACTION_TICKS      = 40;   // 2 秒
     static constexpr int  FEED_ACTION_TICKS = 60;   // 3 秒
+    // 毛刈り・角研ぎも、音（約 0.56 秒、画面が止まる）のあとに動きが始まるので、同じ長さ。
+    static constexpr int  TRIM_ACTION_TICKS = 60;   // 3 秒
     // 系統別に「CUT/POLI」が切り替わるため、メニュー項目とラベルは Game の状態を見て返す。
     // 毛刈り・角研ぎは成体だけ。ベビーと若羊は、メニューが 1 項目少ない（MENU_COUNT - 1）。
     int         menuCount() const;
@@ -99,6 +101,9 @@ public:
     Screen    screen()      const { return _screen; }
     Face      face()        const { return _face; }
     Action    action()      const { return _action; }
+    // 毛刈り・角研ぎを始めたときの羊が、ふさふさ・角長の絵だったか。始めた瞬間に毛・角は 0 に戻るので、
+    // 動きの途中まで元の絵を見せて、刈り終えたところで通常の絵に切り替えるために覚えておく。
+    bool      actionWasGrown() const { return _action_was_grown; }
     const char* name()      const { return _name; }
     const uint8_t* nameKana() const { return _name_kana; }
 
@@ -171,6 +176,7 @@ private:
     int        _walk_tick;
     Face       _face;
     Action     _action;
+    bool       _action_was_grown = false;
 
     // 「うろうろ」のアイドル状態機械（描画用、save 不要）
     enum class WalkState : uint8_t { WALK, PAUSE, LOOK };

@@ -13,6 +13,8 @@
 #include "melody.h"
 #include "sound.h"
 #include "pet_motion.h"
+#include "shear_motion.h"
+#include "polish_motion.h"
 #include "sound.h"
 #include <cassert>
 #include <cstdio>
@@ -1535,12 +1537,13 @@ static void test_feed_action_lasts_longer_than_other_actions() {
     d.wool  = 50;
     Game shear(nullptr, &d);
     menu_select(shear, Game::Action::SHEAR);
-    for (int i = 0; i < Game::ACTION_TICKS; ++i) shear.tick();
+    for (int i = 0; i < Game::TRIM_ACTION_TICKS; ++i) shear.tick();
     assert(shear.action() == Game::Action::SHEAR);
     shear.tick();
     assert(shear.action() == Game::Action::NONE);
 
     assert(Game::FEED_ACTION_TICKS > Game::ACTION_TICKS);
+    assert(Game::TRIM_ACTION_TICKS > Game::ACTION_TICKS);   // 毛刈り・角研ぎは、音のあとに動きが始まるので長い
 }
 
 // ---- 撫でる：ハートと弾み -------------------------------------------------------
@@ -1996,6 +1999,208 @@ static void test_debug_cycle_treats_old_merino_as_corriedale() {
     assert(g.breed() == Game::Breed::LINCOLN);             // コリデールの次
 }
 
+// ---- 毛刈り：はさみが体を 2 往復して、毛の束が落ちる ------------------------------
+static void test_shear_scissors_sweep_the_body_twice() {
+    using namespace shear_motion;
+    // 音（画面が止まる間）が終わってから出て、2 回目が終わる（CUT_TICK）まで見える
+    assert(PASS_START[0] >= SOUND_BLOCK_TICKS);
+    assert(!clipperShown(PASS_START[0] - 1));
+    assert(clipperShown(PASS_START[0]));
+    assert(clipperShown(CUT_TICK - 1));
+    assert(!clipperShown(CUT_TICK));
+    assert(PASS_START[1] == PASS_START[0] + PASS_LEN);        // 1 回目の直後に 2 回目
+    // 1 回目は右へ、2 回目は左へ動く。2 回目は 1 回目より下
+    for (int walk_x : { 0, 40, 80 }) {
+        assert(clipperX(walk_x, PASS_START[0]) == walk_x + PASS_X0);
+        assert(clipperX(walk_x, PASS_START[0] + PASS_LEN - 1) == walk_x + PASS_X1);
+        assert(clipperX(walk_x, PASS_START[1]) == walk_x + PASS_X1);
+        assert(clipperX(walk_x, PASS_START[1] + PASS_LEN - 1) == walk_x + PASS_X0);
+        for (int t = PASS_START[0]; t < CUT_TICK; ++t) {
+            // 動いている間は、羊の 2 倍スプライト（48px 幅）の中、画面の中
+            assert(clipperX(walk_x, t) >= walk_x && clipperX(walk_x, t) + SCISSORS_W <= walk_x + 48);
+            assert(clipperX(walk_x, t) >= 0 && clipperX(walk_x, t) + SCISSORS_W <= background::W);
+        }
+    }
+    assert(clipperY(PASS_START[0]) == PASS_Y[0]);
+    assert(clipperY(PASS_START[1]) == PASS_Y[1]);
+    assert(PASS_Y[1] > PASS_Y[0]);
+    // 刃は開閉を繰り返す
+    bool saw_open = false, saw_closed = false;
+    for (int t = PASS_START[0]; t < CUT_TICK; ++t) (clipperOpen(t) ? saw_open : saw_closed) = true;
+    assert(saw_open && saw_closed);
+}
+
+static void test_shear_wool_is_cut_after_the_second_pass() {
+    using namespace shear_motion;
+    assert(!woolCut(0));
+    assert(!woolCut(CUT_TICK - 1));                            // 2 回目の最後まで、毛は付いている
+    assert(woolCut(CUT_TICK));
+    assert(woolCut(Game::TRIM_ACTION_TICKS));
+    // 毛が消えたあと、動きが終わるまでに、毛の束が積もったのを見せる時間がある
+    assert(Game::TRIM_ACTION_TICKS - CUT_TICK >= 10);
+}
+
+static void test_shear_tufts_fall_and_pile_up_on_the_ground() {
+    using namespace shear_motion;
+    int x, y;
+    for (int i = 0; i < TUFT_COUNT; ++i) {
+        // 落ち始める前は出ない。はさみが出ている間に落ち始める
+        assert(TUFT_SPAWN[i] >= PASS_START[0] && TUFT_SPAWN[i] < CUT_TICK);
+        assert(!tuft(i, 40, TUFT_SPAWN[i] - 1, &x, &y));
+        assert(tuft(i, 40, TUFT_SPAWN[i], &x, &y));
+        int prev_y = y;
+        for (int t = TUFT_SPAWN[i]; t <= Game::TRIM_ACTION_TICKS; ++t) {
+            assert(tuft(i, 40, t, &x, &y));
+            assert(y >= prev_y);                               // 下へ落ちる（戻らない）
+            assert(y + TUFT_H - 1 <= GROUND_Y);                // 地面（草の帯）より下へは行かない
+            assert(y >= 0);
+            assert(x >= 40 && x + TUFT_W <= 40 + 48);          // 羊の幅の中
+            prev_y = y;
+        }
+        assert(y + TUFT_H - 1 == GROUND_Y);                    // 最後は地面に積もる
+    }
+    assert(GROUND_Y + 1 == background::GRASS_TOP);
+    // 落ち始めは、はさみのいる場所の近く
+    assert(tuft(0, 0, TUFT_SPAWN[0], &x, &y));
+    assert(x >= clipperX(0, TUFT_SPAWN[0]) - TUFT_W && x <= clipperX(0, TUFT_SPAWN[0]) + SCISSORS_W);
+}
+
+static int shape_count(bool (*f)(int, int), int w, int h) {
+    int n = 0;
+    for (int dy = 0; dy < h; ++dy) for (int dx = 0; dx < w; ++dx) if (f(dx, dy)) ++n;
+    return n;
+}
+
+static void test_shear_shapes_stay_inside_their_boxes() {
+    using namespace shear_motion;
+    assert(!scissorsPixel(true, -1, 0) && !scissorsPixel(true, SCISSORS_W, 0));
+    assert(!scissorsPixel(true, 0, -1) && !scissorsPixel(true, 0, SCISSORS_H));
+    assert(!tuftPixel(-1, 0) && !tuftPixel(TUFT_W, 0) && !tuftPixel(0, -1) && !tuftPixel(0, TUFT_H));
+    assert(shape_count(tuftPixel, TUFT_W, TUFT_H) > 0);
+    int open = 0, closed = 0;
+    for (int dy = 0; dy < SCISSORS_H; ++dy)
+        for (int dx = 0; dx < SCISSORS_W; ++dx) {
+            open += scissorsPixel(true, dx, dy);
+            closed += scissorsPixel(false, dx, dy);
+        }
+    assert(open > 0 && closed > 0);
+    // 開いた絵と閉じた絵は違う（開閉が見える）
+    bool differs = false;
+    for (int dy = 0; dy < SCISSORS_H; ++dy)
+        for (int dx = 0; dx < SCISSORS_W; ++dx)
+            if (scissorsPixel(true, dx, dy) != scissorsPixel(false, dx, dy)) differs = true;
+    assert(differs);
+}
+
+// ---- 角研ぎ：木の幹に角をこすりつけて、火花が散る ---------------------------------
+static void test_polish_rubs_between_the_sound_and_the_filed_tick() {
+    using namespace polish_motion;
+    assert(RUB_START >= SOUND_BLOCK_TICKS);                    // 音が終わってから、こすり始める
+    assert(!isRubbing(RUB_START - 1) && isRubbing(RUB_START));
+    assert(isRubbing(RUB_END - 1) && !isRubbing(RUB_END));
+    assert(!filed(FILED_TICK - 1) && filed(FILED_TICK));       // こすり終わったら、角が短くなる
+    assert(Game::TRIM_ACTION_TICKS - FILED_TICK >= 10);        // 研ぎ終えた羊を見せる時間がある
+}
+
+static void test_polish_leans_toward_the_trunk_and_back() {
+    using namespace polish_motion;
+    int dx, dy;
+    lean(0, 1, &dx, &dy);
+    assert(dx == 0 && dy == 0);                                // こする前は、傾かない
+    lean(RUB_END, 1, &dx, &dy);
+    assert(dx == 0 && dy == 0);                                // こすり終えたら、戻る
+    bool pressed = false, released = false;
+    for (int t = RUB_START; t < RUB_END; ++t) {
+        lean(t, 1, &dx, &dy);
+        assert(dx == (isPressed(t) ? LEAN_PX : LEAN_PX - 2));  // 幹へ押しつける・戻すを繰り返す
+        assert(dy == 0);
+        (isPressed(t) ? pressed : released) = true;
+        lean(t, -1, &dx, &dy);
+        assert(dx == -(isPressed(t) ? LEAN_PX : LEAN_PX - 2)); // 左に幹があるときは、逆向き
+    }
+    assert(pressed && released);
+    assert(!isPressed(RUB_START - 1) && !isPressed(RUB_END));
+}
+
+static void test_polish_sparks_only_while_pressed() {
+    using namespace polish_motion;
+    for (int t = 0; t <= Game::TRIM_ACTION_TICKS; ++t) assert(sparkShown(t) == isPressed(t));
+    // 火花は、幹と羊のすき間（角の先）、角の高さに出る
+    for (int walk_x : { 0, 30, 56, 57, 80 }) {
+        int x, y;
+        sparkPos(walk_x, &x, &y);
+        assert(x >= 0 && x + SPARK_W <= background::W);
+        assert(y + SPARK_H / 2 == SPARK_CENTER_Y);
+        if (direction(walk_x) > 0) assert(x + SPARK_W - 1 < trunkLeft(walk_x) + 1);   // 幹の手前（羊側）
+        else                        assert(x >= trunkLeft(walk_x) + TRUNK_W - 1);
+    }
+}
+
+static void test_polish_trunk_stays_on_screen_and_beside_the_sheep() {
+    using namespace polish_motion;
+    assert(direction(0) == 1 && direction(56) == 1);
+    assert(direction(57) == -1 && direction(80) == -1);        // 画面の右半分では、左に置く
+    for (int walk_x = 0; walk_x <= 80; ++walk_x) {
+        const int left = trunkLeft(walk_x);
+        assert(left >= 0 && left + TRUNK_W - 1 < background::W);
+        if (direction(walk_x) > 0) assert(left >= walk_x + 44);            // 右に置くときは、羊の右端の外
+        else                        assert(left + TRUNK_W - 1 <= walk_x + 4);
+    }
+    assert(TRUNK_TOP + TRUNK_H - 1 + 1 == background::GRASS_TOP);          // 根元は草の帯の真上
+    assert(TRUNK_TOP <= SPARK_CENTER_Y - SPARK_H / 2);                     // 火花の高さに、幹がある
+}
+
+static void test_polish_shapes_stay_inside_their_boxes() {
+    using namespace polish_motion;
+    assert(!trunkPixel(-1, 0) && !trunkPixel(TRUNK_W, 0) && !trunkPixel(0, -1) && !trunkPixel(0, TRUNK_H));
+    assert(!sparkPixel(-1, 0) && !sparkPixel(SPARK_W, 0) && !sparkPixel(0, -1) && !sparkPixel(0, SPARK_H));
+    for (int dy = 0; dy < TRUNK_H; ++dy) {
+        assert(trunkPixel(0, dy) && trunkPixel(TRUNK_W - 1, dy));          // 幹の両側の輪郭は、途切れない
+    }
+    for (int dx = 0; dx < TRUNK_W; ++dx) assert(trunkPixel(dx, 0));         // 上端は閉じている
+    assert(shape_count(sparkPixel, SPARK_W, SPARK_H) > 0);
+    assert(sparkPixel(SPARK_W / 2, SPARK_H / 2));                          // 中心は点く
+}
+
+// ---- 毛刈り・角研ぎの絵の切り替え：始めたときが、ふさふさ・角長だったか ----------
+static void test_trim_remembers_whether_the_sheep_was_grown() {
+    for (Game::Breed breed : { Game::Breed::CORRIEDALE, Game::Breed::MOUFLON }) {
+        const Game::Action act = breed == Game::Breed::MOUFLON ? Game::Action::POLISH : Game::Action::SHEAR;
+        Game base(nullptr);
+        skip_naming(base);
+        GameSaveData d = base.saveData();
+        d.stage = uint8_t(Game::Stage::ADULT);
+        d.breed = uint8_t(breed);
+        d.wool = d.horn = 80;                                  // ふさふさ・角長（> 50）
+        Game grown(nullptr, &d);
+        menu_select(grown, act);
+        assert(grown.action() == act);
+        assert(grown.actionWasGrown());                        // 毛・角は 0 に戻っているが、始めたときは伸びていた
+        assert(!grown.isFluffy() && !grown.isLonghorn());
+
+        d.wool = d.horn = 30;                                  // 刈れる（> 10）が、絵はまだ通常（<= 50）
+        Game shortish(nullptr, &d);
+        menu_select(shortish, act);
+        assert(shortish.action() == act);
+        assert(!shortish.actionWasGrown());                    // 絵の切り替えなし
+    }
+}
+
+static void test_trim_actions_last_trim_action_ticks() {
+    Game base(nullptr);
+    skip_naming(base);
+    GameSaveData d = base.saveData();
+    d.stage = uint8_t(Game::Stage::ADULT);
+    d.breed = uint8_t(Game::Breed::BIGHORN);
+    d.horn = 80;
+    Game g(nullptr, &d);
+    menu_select(g, Game::Action::POLISH);
+    for (int i = 0; i < Game::TRIM_ACTION_TICKS; ++i) g.tick();
+    assert(g.action() == Game::Action::POLISH);
+    g.tick();
+    assert(g.action() == Game::Action::NONE);
+}
+
 int main() {
     std::setbuf(stdout, nullptr);
     std::srand(42);   // 進化判定の再現性のため固定シード
@@ -2050,6 +2255,17 @@ int main() {
     RUN(test_eat_bale_is_eaten_bite_by_bite);
     RUN(test_eat_bale_is_bitten_from_the_sheep_side);
     RUN(test_feed_action_lasts_longer_than_other_actions);
+    RUN(test_shear_scissors_sweep_the_body_twice);
+    RUN(test_shear_wool_is_cut_after_the_second_pass);
+    RUN(test_shear_tufts_fall_and_pile_up_on_the_ground);
+    RUN(test_shear_shapes_stay_inside_their_boxes);
+    RUN(test_polish_rubs_between_the_sound_and_the_filed_tick);
+    RUN(test_polish_leans_toward_the_trunk_and_back);
+    RUN(test_polish_sparks_only_while_pressed);
+    RUN(test_polish_trunk_stays_on_screen_and_beside_the_sheep);
+    RUN(test_polish_shapes_stay_inside_their_boxes);
+    RUN(test_trim_remembers_whether_the_sheep_was_grown);
+    RUN(test_trim_actions_last_trim_action_ticks);
     RUN(test_pet_stroke_and_bleat_timing);
     RUN(test_pet_bounce_only_at_the_stroke);
     RUN(test_pet_heart_rises_and_leaves_the_screen);

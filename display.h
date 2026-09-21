@@ -23,6 +23,9 @@ private:
     void drawGrass(int dx);
     void drawFuton(int dx);
     void drawEatBale(int walk_x, int t);
+    void drawTrunk(int walk_x);
+    // 動く飾り（はさみ・毛の束）。羊の絵に重なっても見えるよう、まわり 1px を消してから描く。
+    void drawOutlined(bool (*pixel)(int, int), int w, int h, int x, int y);
     void drawNightSky(int frame, int dx);
     void drawDaySky(const Game& g, int dx);
 
@@ -37,7 +40,8 @@ private:
     void drawNaming(const Game& g);
 
     // 24x24 スプライト [24][3] のポインタを返す。
-    const uint8_t (*selectSprite(const Game& g, Game::Face faceOverride))[3];
+    // grown: 毛刈り・角研ぎの途中で、まだ刈り終えていない間、ふさふさ・角長の絵を出す（毛・角は始めた瞬間に 0 に戻るため）。
+    const uint8_t (*selectSprite(const Game& g, Game::Face faceOverride, bool grown = false))[3];
     void drawActionFx(const Game& g);
     void drawFaceFx(const Game& g, int sx, int sy);
 };

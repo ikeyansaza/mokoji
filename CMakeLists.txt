@@ -16,6 +16,8 @@ add_executable(mokoji
     background.cpp
     eat_motion.cpp
     pet_motion.cpp
+    shear_motion.cpp
+    polish_motion.cpp
     display.cpp
     sound.cpp
     melody.cpp
