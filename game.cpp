@@ -38,9 +38,9 @@ const Game::Action kMenuActionsDefault[Game::MENU_COUNT] = {
 
 namespace {
 // 表示位置 i を、既定のメニュー定義（kMenu*Default）の添字に直す。
-// ベビーは毛刈り（添字 2）を出さないので、2 番目以降を 1 つ後ろへずらす。
+// 毛刈り・角研ぎ（添字 2）は成体だけ。ベビーと若羊は出さないので、2 番目以降を 1 つ後ろへずらす。
 int menuSlot(Game::Stage stage, int i) {
-    return (stage == Game::Stage::BABY && i >= 2) ? i + 1 : i;
+    return (stage != Game::Stage::ADULT && i >= 2) ? i + 1 : i;
 }
 }  // namespace
 
@@ -60,7 +60,7 @@ int Game::statusLevel(int value) {
 }
 
 int Game::menuCount() const {
-    return (_stage == Stage::BABY) ? MENU_COUNT - 1 : MENU_COUNT;
+    return (_stage == Stage::ADULT) ? MENU_COUNT : MENU_COUNT - 1;
 }
 
 const char* Game::menuLabel(int i) const {
@@ -231,17 +231,16 @@ void Game::tick() {
             _hunger = std::max(0, _hunger - dec);
             _happy  = std::max(0, _happy  - dec);
         }
-        // 系統に応じて毛 or 角を伸ばす（系統別の手入れ対象だけ伸びる仕様）
-        // ワイルド系は wool 伸びない（CUT 不可なので溜まり続けてしまうバグ防止）。
-        Family fam = family();
-        int adult_grow = (_stage == Stage::ADULT) ? 2 : 1;
-        if (fam == Family::WILD) {
-            _horn = std::min(100, _horn + adult_grow);
-        } else if (_stage != Stage::BABY) {
-            // YOUNG_MOKO / YOUNG_SUFFOLK / ADULT MOKO/SUFFOLK。
-            // ベビーは毛刈りができない（メニューに出ない）ので伸ばさない。
-            // 伸ばすと、若羊に進化した時点で毛が溜まったままになる。
-            _wool = std::min(100, _wool + adult_grow);
+        // 毛・角は成体だけ伸ばす（毛刈り・角研ぎができるのは成体だけ）。
+        // ベビー・若羊で伸ばすと、成体に進化した時点で毛・角が溜まったままになる。
+        // 系統別の手入れ対象だけ伸びる: ワイルド系は角、それ以外（モコ・サフォーク系）は毛。
+        if (_stage == Stage::ADULT) {
+            constexpr int ADULT_GROW = 2;
+            if (family() == Family::WILD) {
+                _horn = std::min(100, _horn + ADULT_GROW);
+            } else {
+                _wool = std::min(100, _wool + ADULT_GROW);
+            }
         }
 
         // 睡眠度の更新は「ゲーム内 1 時間ごと」にゲート。
@@ -537,9 +536,9 @@ void Game::evolveYoung() {
         _stage = Stage::YOUNG_SUFFOLK;
     } else {
         _stage = Stage::YOUNG_WILD;
-        _wool = 0;   // ワイルド系は wool 概念がない、BABY 時代の蓄積をリセット
     }
-    _menu_cursor = 0;   // メニューの項目数が 4 → 5 に変わるので、開いたままでもカーソルの意味がずれないよう先頭へ
+    _wool = 0;
+    _horn = 0;   // 若羊は毛・角を伸ばさない。ベビーの間に溜まった分（古いセーブ）は持ち越さない
     _dirty = true;
     queueSfx(Sfx::HAPPY);
 }
@@ -571,6 +570,9 @@ void Game::evolveAdult() {
     }
 
     _stage = Stage::ADULT;
+    _wool = 0;
+    _horn = 0;           // 若羊の間に溜まった分（古いセーブ）は持ち越さない
+    _menu_cursor = 0;    // メニューの項目数が 5 → 6 に変わるので、開いたままでもカーソルの意味がずれないよう先頭へ
     _dirty = true;
     queueSfx(Sfx::HAPPY);
 }
