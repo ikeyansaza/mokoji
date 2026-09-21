@@ -44,8 +44,11 @@ def _flip(sp):
     return out
 
 
+_HALO_WIDTH = 2   # 増毛版の毛の幅（px）。1px だと通常版との差が小さく、増えたように見えなかった
+
+
 def _halo(base_rows):
-    """通常版 base_rows の体（row 10〜17）の左右の端の外側に 1px ずつ毛を足した rows tuple を返す（増毛版）。
+    """通常版 base_rows の体（row 10〜17）の左右の端の外側に _HALO_WIDTH px ずつ毛を足した rows tuple を返す（増毛版）。
 
     端は行ごとに検出するので、毛は必ず体につながり、通常版の絵は変わらない。
     毛は各行の左右の端に足すため、通常版の行が左右対称なら増毛版も対称になる。
@@ -55,10 +58,11 @@ def _halo(base_rows):
         xs = [i for i, c in enumerate(base_rows[y]) if c == '#']
         if not xs:
             continue
-        if xs[0] > 0:
-            out[y][xs[0] - 1] = '#'
-        if xs[-1] < 23:
-            out[y][xs[-1] + 1] = '#'
+        for d in range(1, _HALO_WIDTH + 1):
+            if xs[0] - d >= 0:
+                out[y][xs[0] - d] = '#'
+            if xs[-1] + d < 24:
+                out[y][xs[-1] + d] = '#'
     return tuple(''.join(row) for row in out)
 
 
@@ -474,7 +478,7 @@ ADULT_BIGHORN_L = _img(*BIGHORN)
 ADULT_BIGHORN_R = _flip(ADULT_BIGHORN_L)
 
 # Stage 4: SPECIAL
-# 増毛期：通常版の体の外周に毛を 1px 足す（_halo）。毛は体につながり、通常版の絵は変えない。
+# 増毛期：通常版の体の外周に毛を 2px 足す（_halo）。毛は体につながり、通常版の絵は変えない。
 ADULT_MERINO_FLUFFY_F = _img(*_halo(MERINO))
 ADULT_MERINO_FLUFFY_L = _img(*_halo(MERINO))
 ADULT_MERINO_FLUFFY_R = _flip(ADULT_MERINO_FLUFFY_L)
