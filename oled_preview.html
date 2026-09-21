@@ -74,8 +74,6 @@
             display: flex;
             flex-direction: column;
             gap: 8px;
-            flex: 1 1 340px;
-            min-width: 280px;
         }
 
         label {
@@ -130,12 +128,23 @@
             color: var(--accent);
         }
 
-        /* ── プレビューパネル ── */
-        #preview-col {
-            flex: 1 1 460px;
+        /* ── 左右の列 ──
+           左: OLED とアニメの操作 → 貼り付け欄。右: zoom → ツリー・貼り付けた候補・没候補。
+           狭い画面では、2 列が横に並べなければ縦に折り返し、ページ全体をスクロールする。 */
+        #left-col {
             display: flex;
             flex-direction: column;
             gap: 14px;
+            flex: 1 1 340px;
+            min-width: 280px;
+        }
+
+        #right-col {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            flex: 1 1 460px;
+            min-width: 0;
         }
 
         .section-label {
@@ -202,7 +211,8 @@
             gap: 12px;
         }
 
-        .sprite-card {
+        .sprite-card,
+        .cand-card {
             background: var(--panel);
             border: 1px solid var(--border);
             border-radius: 3px;
@@ -216,15 +226,19 @@
         }
 
         .sprite-card:hover,
-        .sprite-card.active {
+        .sprite-card.active,
+        .cand-card:hover,
+        .cand-card.active {
             border-color: var(--accent);
         }
 
-        .sprite-card canvas {
+        .sprite-card canvas,
+        .cand-card canvas {
             image-rendering: pixelated;
         }
 
-        .sprite-card .name {
+        .sprite-card .name,
+        .cand-card .name {
             font-size: 9px;
             color: var(--text);
             letter-spacing: .04em;
@@ -374,6 +388,24 @@
             color: #a44;
         }
 
+        /* ── 没候補 ── */
+        .cand-topic {
+            font-size: 10px;
+            color: var(--text-hi);
+            letter-spacing: .06em;
+            margin: 10px 0 6px;
+        }
+
+        .cand-topic:first-child {
+            margin-top: 0;
+        }
+
+        .cand-cards {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
         /* ── OLED の表示サイズ ──
            キャンバスは 768x384 で描き、CSS で表示の大きさを変える。縮めるのは 2/3・1/2 だけにして、
            1 ドットが整数ピクセルになるようにし、ドットが崩れないようにする。 */
@@ -386,17 +418,17 @@
             height: calc(var(--oled-w) / 2);
         }
 
-        /* 右の列の上下（画面が狭いときは、今までどおり縦に並ぶだけ） */
-        #fixed-area,
+        #oled-block,
+        #zoom-block,
         #scroll-area {
             display: flex;
             flex-direction: column;
             gap: 14px;
         }
 
-        /* ── 広い画面: OLED を画面の上に固定し、その下だけをスクロールさせる ──
-           幅 1280px 以上（左の貼り付け欄と、ツリーを含む右の列が横に並べる幅）かつ高さ 640px 以上のときだけ。
-           これより狭い・低い画面では、ページ全体をスクロールする従来の表示のまま。 */
+        /* ── 画面が広く高いとき: 画面いっぱいに使い、OLED を上に固定して、下だけスクロールさせる ──
+           幅と高さが足りない画面（下の 2 つの条件のどちらにも当たらない画面）は、ページ全体をスクロールする従来の表示のまま。
+           共通: ページ自体はスクロールさせず、各エリアが自分でスクロールする。 */
         @media (min-width: 1280px) and (min-height: 640px) {
             body {
                 height: 100vh;
@@ -409,48 +441,127 @@
                 flex: none;
             }
 
+            #scroll-area {
+                overflow-y: auto;
+                min-height: 0;
+                padding: 14px 10px 0 0;
+                border-top: 1px solid var(--border);
+                scrollbar-width: thin;
+                scrollbar-color: #2a3a4a transparent;
+            }
+
+            #input-col {
+                min-height: 0;
+                overflow-y: auto;
+            }
+        }
+
+        /* 広い画面（幅 1570px 以上 = 左の OLED と、ツリーを含む右の列（約 920px）が横に並べる幅）:
+           左 = OLED とアニメの操作（固定）+ 貼り付け欄、右 = zoom（固定）+ スクロールするエリア */
+        @media (min-width: 1570px) and (min-height: 640px) {
+            :root {
+                --oled-w: 512px;
+            }
+
             .layout {
                 flex: 1 1 auto;
                 min-height: 0;
                 flex-wrap: nowrap;
             }
 
-            #input-col {
-                flex: 1 1 260px;
-                min-width: 260px;
-                min-height: 0;
-                overflow-y: auto;
-            }
-
-            /* 幅は中身（OLED・ツリー）で決める。残りを左の貼り付け欄が使う */
-            #preview-col {
+            /* 幅は OLED の枠（キャンバス + 余白 76px）に合わせ、貼り付け欄もその幅にする */
+            #left-col {
                 flex: 0 0 auto;
+                width: calc(var(--oled-w) + 76px);
+                min-width: 0;
                 min-height: 0;
             }
 
-            #fixed-area {
+            #oled-block {
+                flex: none;
+            }
+
+            #input-col {
+                flex: 1 1 auto;
+            }
+
+            #input-col textarea {
+                flex: 1 1 auto;
+                height: auto;
+                min-height: 120px;
+                resize: none;
+            }
+
+            #right-col {
+                flex: 1 1 auto;
+                min-height: 0;
+            }
+
+            #zoom-block {
                 flex: none;
             }
 
             #scroll-area {
                 flex: 1 1 auto;
-                min-height: 0;
-                overflow-y: auto;
-                padding: 14px 10px 0 0;
-                border-top: 1px solid var(--border);
-                scrollbar-width: thin;
-                scrollbar-color: #2a3a4a transparent;
             }
         }
 
-        /* 高さが足りない画面では、OLED を縮めて、スクロール領域を確保する */
-        @media (min-width: 1280px) and (min-height: 640px) and (max-height: 959px) {
+        /* 最大（768px）にするのは、貼り付け欄が 250px ほど残る高さがあるときだけ */
+        @media (min-width: 1830px) and (min-height: 1040px) {
+            :root {
+                --oled-w: 768px;
+            }
+        }
+
+        @media (min-width: 1570px) and (min-height: 640px) and (max-height: 719px) {
+            :root {
+                --oled-w: 384px;
+            }
+        }
+
+        /* 中くらいの画面（幅 1280〜1569px）: 左は貼り付け欄のみ。右は、上に OLED と zoom を横に並べて固定し、
+           その下だけスクロールする（縦に積むと、スクロールエリアが数十 px しか残らないため）。 */
+        @media (min-width: 1280px) and (max-width: 1569px) and (min-height: 640px) {
+            .layout {
+                flex: 1 1 auto;
+                min-height: 0;
+                display: grid;
+                grid-template-columns: minmax(260px, 1fr) auto auto;
+                grid-template-rows: auto minmax(0, 1fr);
+                grid-template-areas: "input oled zoom" "input scroll scroll";
+                gap: 14px 24px;
+            }
+
+            #left-col,
+            #right-col {
+                display: contents;
+            }
+
+            #oled-block {
+                grid-area: oled;
+            }
+
+            #zoom-block {
+                grid-area: zoom;
+                align-self: start;
+            }
+
+            #input-col {
+                grid-area: input;
+            }
+
+            #scroll-area {
+                grid-area: scroll;
+            }
+        }
+
+        @media (min-width: 1280px) and (max-width: 1569px) and (min-height: 640px) {
             :root {
                 --oled-w: 512px;
             }
         }
 
-        @media (min-width: 1280px) and (min-height: 640px) and (max-height: 779px) {
+        @media (min-width: 1280px) and (max-width: 1569px) and (min-height: 640px) and (max-height: 899px) {
             :root {
                 --oled-w: 384px;
             }
@@ -467,33 +578,10 @@
 
     <div class="layout">
 
-        <!-- 左: 入力 -->
-        <div id="input-col">
-            <label>候補スプライトをここにペースト（tuple / _img() 両対応）。ゲーム本体の分は右のツリーに自動で出る</label>
-            <textarea id="src" spellcheck="false" placeholder='HITSUJI = (
-    "........................",
-    "......###########.......",
-    ...
-)
+        <!-- 左: OLED とアニメの操作（上に固定）→ 貼り付け欄 -->
+        <div id="left-col">
 
-# または _img() 形式も可
-LAMB_F = _img(
-    "........................",
-    ...
-)'></textarea>
-            <div class="btn-row">
-                <button class="primary" onclick="parse()">▶ parse &amp; preview</button>
-                <button onclick="clearAll()">clear</button>
-                <button onclick="loadSample()">load sample</button>
-            </div>
-            <div id="parse-log" style="font-size:10px;color:#666;margin-top:4px;line-height:1.7"></div>
-        </div>
-
-        <!-- 右: プレビュー -->
-        <div id="preview-col">
-
-            <!-- 上: OLED シミュレータとアニメの操作。広い画面では画面の上に固定する -->
-            <div id="fixed-area">
+            <div id="oled-block">
 
                 <!-- OLED シミュレータ -->
                 <div>
@@ -529,7 +617,39 @@ LAMB_F = _img(
                 </div>
             </div>
 
-            <!-- 下: ツリー・ズーム・貼り付けた候補。広い画面ではここだけスクロールする -->
+            <!-- 貼り付け欄 -->
+            <div id="input-col">
+                <label>候補スプライトをここにペースト（tuple / _img() 両対応）。ゲーム本体の分は右のツリーに自動で出る</label>
+                <textarea id="src" spellcheck="false" placeholder='HITSUJI = (
+    "........................",
+    "......###########.......",
+    ...
+)
+
+# または _img() 形式も可
+LAMB_F = _img(
+    "........................",
+    ...
+)'></textarea>
+                <div class="btn-row">
+                    <button class="primary" onclick="parse()">▶ parse &amp; preview</button>
+                    <button onclick="clearAll()">clear</button>
+                    <button onclick="loadSample()">load sample</button>
+                    <button onclick="loadGameSprites()">load game sprites</button>
+                </div>
+                <div id="parse-log" style="font-size:10px;color:#666;margin-top:4px;line-height:1.7"></div>
+            </div>
+        </div>
+
+        <!-- 右: zoom（上に固定）→ ツリー・没候補・貼り付けた候補（ここだけスクロール） -->
+        <div id="right-col">
+
+            <!-- ズーム比較 -->
+            <div id="zoom-block">
+                <div class="section-label">zoom — 1x / 2x / 4x</div>
+                <div id="zoom-wrap"></div>
+            </div>
+
             <div id="scroll-area">
 
                 <!-- 進化ツリー（oled_preview_data.js から自動表示） -->
@@ -539,20 +659,19 @@ LAMB_F = _img(
                     <div id="evo-note"></div>
                 </div>
 
-                <!-- ズーム比較 -->
-                <div>
-                    <div class="section-label">zoom — 1x / 2x / 4x</div>
-                    <div id="zoom-wrap"></div>
-                </div>
-
-                <!-- スプライト一覧 -->
+                <!-- スプライト一覧（貼り付けた候補） -->
                 <div>
                     <div class="section-label">pasted sprites — 貼り付けた候補</div>
                     <div id="sprite-list"></div>
                 </div>
 
-            </div>
+                <!-- 没候補（docs/sprite-candidates の未採用・外した・旧デザイン） -->
+                <div>
+                    <div class="section-label">rejected candidates — 没候補（docs/sprite-candidates）</div>
+                    <div id="cand-list"></div>
+                </div>
 
+            </div>
         </div>
     </div>
 
@@ -594,6 +713,14 @@ LAMB_F = _img(
             formById[f.id] = f;
             formBits[f.id] = { F: toBits(f.frames.F), L: toBits(f.frames.L), R: toBits(f.frames.R) };
         });
+
+        // docs/sprite-candidates の候補。表示に使うのは没候補（未採用・外した・旧デザイン）だけ。
+        // 採用済みの案は、ゲーム本体のスプライトとしてツリーに出ている
+        const candsAll = DATA && DATA.candidates ? DATA.candidates : [];
+        const candById = {};
+        const candBits = {};
+        candsAll.forEach(c => { candById[c.id] = c; candBits[c.id] = toBits(c.rows); });
+        const candsRejected = candsAll.filter(c => c.kind === 'rejected');
 
         // ── localStorage ──────────────────────────────
         function saveSrc() {
@@ -803,7 +930,9 @@ LAMB_F = _img(
         // ── アニメ セレクト（ゲーム本体 form:ID / 貼り付け sprite:NAME） ──
         function currentKey() {
             if (!current) return '';
-            return current.kind === 'form' ? 'form:' + current.id : 'sprite:' + current.name;
+            if (current.kind === 'form') return 'form:' + current.id;
+            if (current.kind === 'cand') return 'cand:' + current.id;
+            return 'sprite:' + current.name;
         }
         function syncAnimSelect() {
             document.getElementById('anim-sel').value = currentKey();
@@ -825,11 +954,13 @@ LAMB_F = _img(
             };
             addGroup('game', forms.map(f => ['form:' + f.id, `${f.id} — ${f.label}`]));
             addGroup('pasted', Object.keys(sprites).map(n => ['sprite:' + n, n]));
+            addGroup('rejected candidates', candsRejected.map(c => ['cand:' + c.id, `${c.topicLabel} ${c.short}`]));
             syncAnimSelect();
         }
         function selectByKey(key) {
             if (key.startsWith('form:') && formById[key.slice(5)]) selectForm(key.slice(5));
             else if (key.startsWith('sprite:') && sprites[key.slice(7)]) selectSprite(key.slice(7));
+            else if (key.startsWith('cand:') && candById[key.slice(5)]) selectCand(key.slice(5));
         }
         function onAnimSelChange() {
             selectByKey(document.getElementById('anim-sel').value);
@@ -858,6 +989,7 @@ LAMB_F = _img(
             document.querySelectorAll('.sprite-card').forEach(el => {
                 el.classList.toggle('active', el.querySelector('.name').textContent === name);
             });
+            document.querySelectorAll('.cand-card').forEach(el => el.classList.remove('active'));
             markTree();
             document.getElementById('lineage').textContent = '';
             drawOLED(sprites[name]);
@@ -870,7 +1002,7 @@ LAMB_F = _img(
 
         function selectForm(id) {
             current = { kind: 'form', id };
-            document.querySelectorAll('.sprite-card').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.sprite-card, .cand-card').forEach(el => el.classList.remove('active'));
             markTree();
             document.getElementById('lineage').textContent = lineageText(formById[id]);
             const sp = formBits[id].F;
@@ -880,6 +1012,69 @@ LAMB_F = _img(
             document.getElementById('frame-counter').textContent = 'F';
             syncAnimSelect();
             saveSel(currentKey());
+        }
+
+        // ── 没候補（docs/sprite-candidates） ──────────────────
+        function buildCandidates() {
+            const list = document.getElementById('cand-list');
+            list.innerHTML = '';
+            if (!DATA) return;
+            DATA.topics.forEach(topic => {
+                const items = candsRejected.filter(c => c.topic === topic.id);
+                if (!items.length) return;
+                const head = document.createElement('div');
+                head.className = 'cand-topic';
+                head.textContent = `${topic.label}（${items.length}）`;
+                const cards = document.createElement('div');
+                cards.className = 'cand-cards';
+                items.forEach(c => {
+                    const card = document.createElement('div');
+                    card.className = 'cand-card';
+                    card.dataset.id = c.id;
+                    card.title = `${c.id}\n${c.feature}\n${c.status}`;
+                    const cv = document.createElement('canvas');
+                    cv.width = 48; cv.height = 48;
+                    cv.style.cssText = 'width:48px;height:48px;background:#050d14';
+                    drawSprite(cv.getContext('2d'), candBits[c.id], 2, 0, 0);
+                    const label = document.createElement('div');
+                    label.className = 'name';
+                    label.textContent = c.short;
+                    card.appendChild(cv); card.appendChild(label);
+                    card.addEventListener('click', () => selectCand(c.id));
+                    cards.appendChild(card);
+                });
+                list.appendChild(head);
+                list.appendChild(cards);
+            });
+        }
+
+        function selectCand(id) {
+            current = { kind: 'cand', id };
+            const c = candById[id];
+            document.querySelectorAll('.sprite-card').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.cand-card').forEach(el => el.classList.toggle('active', el.dataset.id === id));
+            markTree();
+            document.getElementById('lineage').textContent = `${c.topicLabel} › ${c.short}: ${c.feature}（${c.status}）`;
+            drawOLED(candBits[id]);
+            buildZoom(candBits[id]);
+            animFrame = 0;
+            document.getElementById('frame-counter').textContent = 'f0';
+            syncAnimSelect();
+            saveSel(currentKey());
+        }
+
+        // ── ゲーム本体のスプライトを貼り付け欄に読み込む（load sample の、ゲーム本体版） ──
+        // 各フォームの正面（F）を、フォーム名の NAME = ( … ) で入れる。直して parse すると、見た目を試せる
+        function loadGameSprites() {
+            const status = document.getElementById('status');
+            if (!forms.length) {
+                status.textContent = 'ゲーム本体のスプライトがありません（oled_preview_data.js が必要）';
+                status.className = 'err';
+                return;
+            }
+            document.getElementById('src').value = forms.map(f =>
+                `${f.id} = (\n` + f.frames.F.map(r => `    "${r}",\n`).join('') + ')').join('\n\n');
+            parse();
         }
 
         // ── アニメ ──────────────────────────────────────
@@ -892,6 +1087,7 @@ LAMB_F = _img(
         }
 
         function tickAnim() {
+            if (current && current.kind === 'cand') return;   // 没候補は静止画（フレームは 1 つ）
             if (current && current.kind === 'form') {
                 // ゲーム本体: フォームの 正面 → 左 → 正面 → 右 を回す
                 animFrame = (animFrame + 1) % WALK_FRAMES.length;
@@ -1019,6 +1215,7 @@ LAMB_F = _img(
         document.getElementById('src').addEventListener('input', saveSrc);
 
         buildTree();
+        buildCandidates();
 
         // 起動時に保存済みの貼り付けと選択を復元（ゲーム本体のスプライトは data.js から常に読む）
         let savedSel = null;
@@ -1034,6 +1231,7 @@ LAMB_F = _img(
         const pastedNames = Object.keys(sprites);
         const statusParts = [];
         if (forms.length) statusParts.push(`${forms.length} forms（ゲーム本体）`);
+        if (candsRejected.length) statusParts.push(`${candsRejected.length} 没候補`);
         if (pastedNames.length) statusParts.push(`${pastedNames.length} sprites restored（貼り付け）`);
         if (statusParts.length) {
             document.getElementById('status').textContent = '✓ ' + statusParts.join(' + ');
@@ -1044,7 +1242,7 @@ LAMB_F = _img(
         buildSpriteList();
 
         // 選択の復元。旧版は名前だけを保存していたので、接頭辞が無ければ貼り付け候補の名前として扱う
-        if (savedSel) selectByKey(/^(form|sprite):/.test(savedSel) ? savedSel : 'sprite:' + savedSel);
+        if (savedSel) selectByKey(/^(form|sprite|cand):/.test(savedSel) ? savedSel : 'sprite:' + savedSel);
         if (!current) {
             if (forms.length) selectForm(forms[0].id);
             else if (pastedNames.length) selectSprite(pastedNames[0]);
