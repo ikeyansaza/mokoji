@@ -19,8 +19,9 @@ import sprites_gen
 
 # 角を持つスプライト → 頭のてっぺんの行。
 # MOUFLON_LONGHORN は体が 1 行下にずれていて、頭頂部が row 6（row 5 は根元の毛束）。
+# YOUNG_WILD は、ベビーの小さな体に角の芽を足した形で、頭頂部が row 8。
 HEAD_TOP = {
-    "YOUNG_WILD_F": 5,
+    "YOUNG_WILD_F": 8,
     "ADULT_MOUFLON_F": 5,
     "ADULT_BIGHORN_F": 5,
     "ADULT_MOUFLON_LONGHORN_F": 6,
@@ -30,6 +31,11 @@ HEAD_TOP = {
 # 頭のてっぺんから耳・体の上端まで（耳は頭頂 +4 行、体の上端は +5 行）。
 # 体全体を対象にすると、手描きの脚・腕の斜め接触まで拾ってしまい角と無関係な失敗になる。
 HEAD_REGION_ROWS = 6
+# YOUNG_WILD は、耳が頭から離れている（ベビーと同じ作り）ので、耳の行を含めず、角の芽と頭（頭頂 +1 行）だけを見る。
+HEAD_REGION_ROWS_OVERRIDE = {"YOUNG_WILD_F": 2}
+
+# 角が頭頂より上に出てよい行数。既定は 1 行。YOUNG_WILD の角の芽は、頭の上に 2 行ある。
+MAX_HORN_RISE = {"YOUNG_WILD_F": 2}
 
 
 def grid(name):
@@ -37,7 +43,7 @@ def grid(name):
 
 
 def head_region(name):
-    return grid(name)[:HEAD_TOP[name] + HEAD_REGION_ROWS]
+    return grid(name)[:HEAD_TOP[name] + HEAD_REGION_ROWS_OVERRIDE.get(name, HEAD_REGION_ROWS)]
 
 
 def components(rows):
@@ -84,13 +90,14 @@ class HornedSpriteTest(unittest.TestCase):
                     self.assertEqual(row, row[::-1], f"{name} row {y}: {row}")
 
     def test_horns_do_not_tower_over_head(self):
-        # 耳の横に巻く設計。頭頂より 1 行を超えて上に出ると、頭上の飾りに見えてしまう
+        # 耳の横に巻く設計。頭頂より上に出すぎると、頭上の飾りに見えてしまう（既定は 1 行まで）
         for name, top in HEAD_TOP.items():
+            rise = MAX_HORN_RISE.get(name, 1)
             with self.subTest(sprite=name):
                 first_on = next(y for y, r in enumerate(grid(name)) if "#" in r)
                 self.assertGreaterEqual(
-                    first_on, top - 1,
-                    f"{name}: 最上段が row {first_on}（頭頂 row {top} より 2 行以上上）",
+                    first_on, top - rise,
+                    f"{name}: 最上段が row {first_on}（頭頂 row {top} より {top - first_on} 行上。上限は {rise} 行）",
                 )
 
 
@@ -101,14 +108,20 @@ YOUNG_FORMS = ["YOUNG_MOKO_F", "YOUNG_SUFFOLK_F", "YOUNG_WILD_F"]
 class YoungSpriteTest(unittest.TestCase):
     def test_symmetric(self):
         # 正面向きなので左右対称（対称軸は col 11）。最後の行のひづめは全フォーム共通で元から非対称なので除く。
-        # YOUNG_MOKO は row 7 が 1px 右へずれて崩れていた
+        # YOUNG_MOKO は row 7 が 1px 右へずれて崩れていた。
+        # ひづめの上の足元の棒（最後の行の 1 つ上）だけは、左右反転（幅 24 の中央 col 11.5 が軸）に対して
+        # 対称でもよい。ベビーのように、反転しても足元が動かない作りにするため。
         for name in YOUNG_FORMS:
             with self.subTest(sprite=name):
                 rows = grid(name)
                 last = max(y for y, r in enumerate(rows) if "#" in r)
                 for y in range(last):
                     row = rows[y][:23]
-                    self.assertEqual(row, row[::-1], f"{name} row {y}: {rows[y]}")
+                    if row == row[::-1]:
+                        continue
+                    if y == last - 1 and rows[y] == rows[y][::-1]:
+                        continue
+                    self.fail(f"{name} row {y}: {rows[y]}")
 
     def test_families_are_distinct(self):
         # モコ系・サフォーク系・ワイルド系で若羊の絵が同じだと、系統の違いがわからない
@@ -117,6 +130,15 @@ class YoungSpriteTest(unittest.TestCase):
             key = tuple(grid(name))
             self.assertNotIn(key, seen, f"{name} が {seen.get(key)} と同じ絵")
             seen[key] = name
+
+    def test_young_wild_does_not_look_like_the_adult_mouflon(self):
+        # 若羊 ワイルド系は、体（row 9〜）がムフロンと同じで、違うのは角だけだったため、若羊に見えなかった。
+        # 体を別の絵にして、絵のピクセル数がムフロンの 8 割以下になる小ささにする。
+        young, adult = grid("YOUNG_WILD_F"), grid("ADULT_MOUFLON_F")
+        self.assertNotEqual(young[9:], adult[9:], "体（row 9〜）がムフロンと同じ")
+        on = lambda rows: sum(r.count("#") for r in rows)
+        self.assertLessEqual(on(young), 0.8 * on(adult),
+                             f"若羊 ワイルド系が大きすぎる（{on(young)}px、ムフロン {on(adult)}px）")
 
 
 # 増毛版 → 元になる通常版
