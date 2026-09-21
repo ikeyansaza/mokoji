@@ -10,6 +10,8 @@
 #include "jump_game.h"
 #include "background.h"
 #include "eat_motion.h"
+#include "pet_motion.h"
+#include "sound.h"
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>
@@ -1073,9 +1075,7 @@ static void test_action_sounds_are_deferred() {
     assert(g.pendingSfx() == Game::Sfx::NONE);         // 鳴らしたら予約は空になる
 
     menu_select(g, Game::Action::PET);
-    assert(g.pendingSfx() == Game::Sfx::PET);
-    g.playPendingSfx();
-    assert(g.pendingSfx() == Game::Sfx::NONE);
+    assert(g.pendingSfx() == Game::Sfx::NONE);         // 撫でるは、その場では鳴らさない（音は動きの進行に合わせる）
 
     Game moko = make_adult_with_growth(Game::Breed::CORRIEDALE);
     menu_select(moko, Game::Action::SHEAR);
@@ -1508,8 +1508,8 @@ static void test_eat_bale_is_bitten_from_the_sheep_side() {
 }
 
 static void test_feed_action_lasts_longer_than_other_actions() {
-    // ぱくっを 1 秒おきに 3 回するので、ご飯の動きは他の動きより長い（FEED_ACTION_TICKS）。
-    // 撫でる・毛刈りなどは、今までどおり ACTION_TICKS。
+    // ご飯はぱくっを 1 秒おきに 3 回するので、他の動きより長い（FEED_ACTION_TICKS）。
+    // 撫でる・毛刈りなどは ACTION_TICKS。
     Game feed = make_game_with(50, 50);
     menu_select(feed, Game::Action::FEED);
     assert(feed.action() == Game::Action::FEED);
@@ -1524,7 +1524,111 @@ static void test_feed_action_lasts_longer_than_other_actions() {
     assert(pet.action() == Game::Action::PET);
     pet.tick();
     assert(pet.action() == Game::Action::NONE);
+
+    Game base(nullptr);
+    skip_naming(base);
+    GameSaveData d = base.saveData();
+    d.stage = uint8_t(Game::Stage::ADULT);
+    d.breed = uint8_t(Game::Breed::LINCOLN);
+    d.wool  = 50;
+    Game shear(nullptr, &d);
+    menu_select(shear, Game::Action::SHEAR);
+    for (int i = 0; i < Game::ACTION_TICKS; ++i) shear.tick();
+    assert(shear.action() == Game::Action::SHEAR);
+    shear.tick();
+    assert(shear.action() == Game::Action::NONE);
+
     assert(Game::FEED_ACTION_TICKS > Game::ACTION_TICKS);
+}
+
+// ---- 撫でる：ハートと弾み -------------------------------------------------------
+static void test_pet_stroke_and_bleat_timing() {
+    using namespace pet_motion;
+    // 撫でるのは 1 回。撫でたあと、ポッと鳴き声が別の音に聞こえるよう、少し間をおいて鳴き声が鳴る。
+    assert(isStroke(STROKE_TICK));
+    assert(!isStroke(STROKE_TICK - 1) && !isStroke(STROKE_TICK + 1) && !isStroke(0));
+    assert(BLEAT_TICK - STROKE_TICK >= 5);                     // 0.25 秒以上あける
+    // 鳴き声は、鳴り終わる（BLEAT_BLOCK_TICKS 止まる）までに、動きが終わらない
+    assert(BLEAT_TICK + BLEAT_BLOCK_TICKS <= Game::ACTION_TICKS);
+}
+
+static void test_pet_bounce_only_at_the_stroke() {
+    using namespace pet_motion;
+    assert(bounce(0) == 0);
+    for (int t = STROKE_TICK; t < STROKE_TICK + BOUNCE_LEN; ++t) assert(bounce(t) == -BOUNCE_PX);
+    assert(bounce(STROKE_TICK - 1) == 0);
+    assert(bounce(STROKE_TICK + BOUNCE_LEN) == 0);
+}
+
+static void test_pet_heart_rises_and_leaves_the_screen() {
+    using namespace pet_motion;
+    // 撫でる前にはない。撫でたら出て、時間とともに上がる。
+    assert(!heartShown(STROKE_TICK - 1));
+    assert(heartShown(STROKE_TICK));
+    assert(heartY(STROKE_TICK + 8) < heartY(STROKE_TICK));
+    // 鳴き声で画面が止まる瞬間（BLEAT_TICK）は、ハートが画面の中に見えている（止まった絵にハートがある）
+    assert(heartY(BLEAT_TICK) > -HEART_H && heartY(BLEAT_TICK) < 64);
+    // 動きが終わるときには、画面の上へ出切っている（ふっと消えるのではなく、浮いて去る）
+    assert(heartY(Game::ACTION_TICKS) + HEART_H <= 0);
+    // 出るときは、羊の頭（2 倍スプライトの内容は y=20 から、弾みで -1）より上
+    assert(heartY(STROKE_TICK) + HEART_H - 1 < 19);
+}
+
+static void test_pet_heart_is_centered_over_the_sheep_and_on_screen() {
+    using namespace pet_motion;
+    // 羊が歩く範囲（0〜80）のどこでも、ハートは羊の頭の真上（中央揃え）で、画面に収まる
+    for (int walk_x = 0; walk_x <= 80; ++walk_x) {
+        const int left = heartX(walk_x);
+        assert(left >= 0 && left + HEART_W <= background::W);
+        const int center2 = 2 * left + HEART_W;                  // ハートの中心の 2 倍
+        const int sheep2  = 2 * walk_x + 48;                     // 羊（48px 幅）の中心の 2 倍
+        assert(center2 - sheep2 >= -2 && center2 - sheep2 <= 2);
+    }
+}
+
+static void test_pet_heart_shape() {
+    using namespace pet_motion;
+    // 前より大きい（5x5 → 7x7）。左右対称で、下が尖っている。
+    assert(HEART_W == 7 && HEART_H == 7);
+    int n = 0;
+    for (int dy = 0; dy < HEART_H; ++dy) {
+        for (int dx = 0; dx < HEART_W; ++dx) {
+            if (heartPixel(dx, dy)) ++n;
+            assert(heartPixel(dx, dy) == heartPixel(HEART_W - 1 - dx, dy));   // 左右対称
+        }
+    }
+    assert(n == 34);
+    assert(heartPixel(HEART_W / 2, HEART_H - 1));                // 下の先端
+    assert(!heartPixel(0, HEART_H - 1) && !heartPixel(HEART_W - 1, HEART_H - 1));
+    assert(!heartPixel(HEART_W / 2, 0));                          // 上は真ん中がくぼむ
+    assert(!heartPixel(-1, 0) && !heartPixel(HEART_W, 0) && !heartPixel(0, HEART_H));
+}
+
+extern int g_stub_blip_count;    // test/stubs/stub_sound.cpp（Sound::blip が呼ばれた回数）
+
+static void test_pet_blips_at_the_stroke_and_bleats_after() {
+    Sound sound(0);
+    Game base(nullptr);
+    skip_naming(base);
+    GameSaveData d = base.saveData();
+    Game g(&sound, &d);
+    menu_select(g, Game::Action::PET);
+    g_stub_blip_count = 0;
+    int blips = 0, blip_tick = -1;
+    bool bleat_seen = false;
+    for (int t = 1; t <= Game::ACTION_TICKS; ++t) {
+        const int before = g_stub_blip_count;
+        g.setNowMs(uint32_t(t) * 50u);
+        g.tick();
+        if (g_stub_blip_count > before) { ++blips; blip_tick = t; }
+        if (t < pet_motion::BLEAT_TICK) assert(g.pendingSfx() == Game::Sfx::NONE);
+        if (t == pet_motion::BLEAT_TICK) { assert(g.pendingSfx() == Game::Sfx::MEE); bleat_seen = true; }
+    }
+    assert(blips == 1);                                   // 撫でたときに 1 回だけ、短い音（待たない音）
+    assert(blip_tick == pet_motion::STROKE_TICK);
+    assert(bleat_seen);                                   // そのあとに鳴き声（待つ音）を予約する
+    g.playPendingSfx();
+    assert(g.pendingSfx() == Game::Sfx::NONE);
 }
 
 // ---- 進化の重み（空腹・幸福の値だけで決め、残りは乱数）--------------------------
@@ -1715,6 +1819,12 @@ int main() {
     RUN(test_eat_bale_is_eaten_bite_by_bite);
     RUN(test_eat_bale_is_bitten_from_the_sheep_side);
     RUN(test_feed_action_lasts_longer_than_other_actions);
+    RUN(test_pet_stroke_and_bleat_timing);
+    RUN(test_pet_bounce_only_at_the_stroke);
+    RUN(test_pet_heart_rises_and_leaves_the_screen);
+    RUN(test_pet_heart_is_centered_over_the_sheep_and_on_screen);
+    RUN(test_pet_heart_shape);
+    RUN(test_pet_blips_at_the_stroke_and_bleats_after);
     RUN(test_sun_is_fixed_in_the_sky);
     RUN(test_sun_shape_and_steady);
     RUN(test_clouds_stay_in_sky_and_drift);

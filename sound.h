@@ -8,7 +8,6 @@ public:
     explicit Sound(uint pin);
 
     void mee();    // メェ〜（羊の鳴き声。震わせて伸ばし、最後に持ち上げる）
-    void pet();    // なでる：一瞬の撫でる音のあと、メェ〜と鳴いて応える
     void mog();    // もぐもぐ（餌やり）
     void joki();   // ジョキジョキ（毛刈り）
     void happy();  // 喜び（イベント）

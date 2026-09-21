@@ -5,7 +5,6 @@
 Sound::Sound(uint pin) : _pin(pin), _slice(0), _channel(0), _duty(0) {}
 
 void Sound::mee()    {}
-void Sound::pet()    {}
 void Sound::mog()    {}
 void Sound::joki()   {}
 void Sound::happy()  {}
@@ -13,7 +12,8 @@ void Sound::setVolume(int) {}
 void Sound::beep(int, int) {}
 void Sound::startTone(int) {}
 void Sound::stopTone() {}
-void Sound::blip(int, int, uint32_t) {}
+int g_stub_blip_count = 0;   // Sound::blip が呼ばれた回数（テストが数える）
+void Sound::blip(int, int, uint32_t) { ++g_stub_blip_count; }
 void Sound::update(uint32_t) {}
 void Sound::noise(int, int, int) {}
 void Sound::glide(int, int, int) {}

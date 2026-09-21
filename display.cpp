@@ -3,6 +3,7 @@
 #include "kana.h"
 #include "font.h"
 #include "eat_motion.h"
+#include "pet_motion.h"
 #include <cstdio>
 #include <cstring>
 
@@ -128,6 +129,8 @@ void Display::drawMain(const Game& g) {
     const bool eating = (g.action() == Game::Action::FEED);
     int lean_x = 0, lean_y = 0;
     if (eating) eat_motion::lean(g.walkTick(), eat_motion::direction(sx), &lean_x, &lean_y);
+    // 撫でるときは、撫でるたびに羊が 1px 弾む
+    if (g.action() == Game::Action::PET) lean_y = pet_motion::bounce(g.walkTick());
     _oled->drawSprite2x(sprite, sx + lean_x, sy + lean_y);
     if (eating) drawEatBale(sx, g.walkTick());
 
@@ -200,10 +203,15 @@ void Display::drawActionFx(const Game& g) {
             // 干し草ロールを食べるモーション（うなずきとロール）は drawMain / drawEatBale で描く。
             break;
         case Game::Action::PET: {
-            // 羊の頭の上にハート「<3」がふわっと上に浮く。
-            int dy = -(t / 4);
-            int y  = 4 + dy;
-            if (y >= 0) _oled->drawText("<3", sx + 16, y);
+            // 撫でた瞬間に、頭の真上からハート（7x7）が 1 つ浮き上がり、画面の上へ消えていく。
+            if (pet_motion::heartShown(t)) {
+                const int hx = pet_motion::heartX(sx), hy = pet_motion::heartY(t);
+                for (int dy = 0; dy < pet_motion::HEART_H; ++dy) {
+                    for (int dx = 0; dx < pet_motion::HEART_W; ++dx) {
+                        if (pet_motion::heartPixel(dx, dy)) _oled->setPixel(hx + dx, hy + dy, true);
+                    }
+                }
+            }
             break;
         }
         case Game::Action::SHEAR: {

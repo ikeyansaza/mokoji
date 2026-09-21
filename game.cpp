@@ -1,6 +1,7 @@
 #include "game.h"
 #include "sound.h"
 #include "kana.h"
+#include "pet_motion.h"
 #include "pico/rand.h"
 #include <cstring>
 #include <algorithm>
@@ -331,7 +332,9 @@ void Game::updateWalk() {
     // メニューからのアクション中は正面を向いて固定
     if (_action != Action::NONE) {
         _face = Face::FRONT;
-        const int limit = (_action == Action::FEED) ? FEED_ACTION_TICKS : ACTION_TICKS;
+        if (_action == Action::PET) petCues();
+        int limit = ACTION_TICKS;
+        if (_action == Action::FEED) limit = FEED_ACTION_TICKS;
         if (_walk_tick > limit) _action = Action::NONE;
         return;
     }
@@ -471,7 +474,7 @@ void Game::doAction(Action act) {
             _happy = std::min(100, _happy + 20);
             _action = Action::PET;
             _dirty = true;
-            queueSfx(Sfx::PET);
+            // 音は動きの進行に合わせる：撫でた瞬間に短い音、少しあとに鳴き声（petCues）
             break;
         case Action::SHEAR:
             // モコ系・サフォーク系のみ実効。それ以外は no-op。
@@ -505,13 +508,20 @@ void Game::doAction(Action act) {
     _walk_tick = 0;
 }
 
+// 撫でるの動き（pet_motion）の進行に合わせて音を出す。撫でた瞬間に短い「ポッ」（待たない音）、
+// 少し間をおいて「メェ〜」（待つ音なので予約して、描画のあとに鳴らす）。
+void Game::petCues() {
+    if (pet_motion::isStroke(_walk_tick) && _sound) _sound->blip(1000, 25, _now_ms);
+    if (_walk_tick == pet_motion::BLEAT_TICK) queueSfx(Sfx::MEE);
+}
+
 void Game::playPendingSfx() {
     Sfx s = _pending_sfx;
     _pending_sfx = Sfx::NONE;
     if (!_sound) return;
     switch (s) {
         case Sfx::MOG:   _sound->mog();   break;
-        case Sfx::PET:   _sound->pet();   break;
+        case Sfx::MEE:   _sound->mee();   break;
         case Sfx::JOKI:  _sound->joki();  break;
         case Sfx::HAPPY: _sound->happy(); break;
         case Sfx::NONE:  break;

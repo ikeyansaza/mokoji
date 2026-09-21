@@ -48,7 +48,7 @@ public:
     // 待つ音（sleep_ms で鳴り終わるまで止まる音）。ボタン処理の中で鳴らすと、鳴り終わるまで画面の
     // 描画が遅れ、メニューが表示されたまま音が聞こえる。そこで Game は予約するだけにして、
     // main が描画のあとに playPendingSfx() で鳴らす。ミニゲームの音（blip）は待たないので、その場で鳴らす。
-    enum class Sfx        : uint8_t { NONE, MOG, PET, JOKI, HAPPY };
+    enum class Sfx        : uint8_t { NONE, MOG, MEE, JOKI, HAPPY };
     enum class Button     : uint8_t { LEFT, CENTER, RIGHT, LEFT_LONG };
     enum class NamingMode : uint8_t {
         SELECT_MODE,   // [PRESET] / [TYPE] のどちらかを選ぶ
@@ -116,7 +116,7 @@ public:
     bool      isNight()     const;
     bool      sleeping()    const { return _sleeping; }
     int       walkX()       const { return _walk_x; }
-    int       walkTick()    const { return _walk_tick; }   // アクション中のアニメ進行用 (0..ACTION_TICKS、ご飯は FEED_ACTION_TICKS)
+    int       walkTick()    const { return _walk_tick; }   // アクション中のアニメ進行用 (0..ACTION_TICKS、ご飯は 0..FEED_ACTION_TICKS)
     int       menuCursor()  const { return _menu_cursor; }
     int       graveCount()  const { return _grave_count; }
     const GraveRecord& grave(int i) const { return _graves[i]; }
@@ -143,6 +143,7 @@ private:
     int        _mini_reward   = 0;
     void       applyMiniReward();
     Sfx        _pending_sfx = Sfx::NONE;
+    void       petCues();      // 撫でるの動きの進行に合わせて、音を出す
     void       queueSfx(Sfx s) { _pending_sfx = s; }   // 後から予約したものを優先する
     void       playMiniSounds(uint8_t ev);
     char       _name[8];                  // romaji 表示用
