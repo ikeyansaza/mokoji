@@ -15,6 +15,7 @@ private:
     void drawSleep(const Game& g);
     void drawNameInput(const uint8_t* buffer);
     void drawMinigame(const Game& g);
+    void drawStatusBar(const Game& g, int x, int y, const char* label, int value);
     void drawGrave(const Game& g);
     void drawNaming(const Game& g);
 
