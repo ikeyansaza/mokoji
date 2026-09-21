@@ -114,6 +114,27 @@ bool cloudPixel(int x, int y, int tick) {
            inBitmap(kCloudB, CLOUD_B_W, CLOUD_B_H, x, y, bx, 10);
 }
 
+namespace {
+// 布団の上の縁の高さ。6px ごとに 1px 上下する波。
+int futonEdge(int x) {
+    return FUTON_TOP + ((((x - FUTON_LEFT) / 6) % 2 == 0) ? 1 : 0);
+}
+}  // namespace
+
+bool futonMask(int x, int y) {
+    if (x < FUTON_LEFT || x > FUTON_RIGHT || y > FUTON_BOTTOM) return false;
+    return y >= futonEdge(x);
+}
+
+bool futonPixel(int x, int y) {
+    if (!futonMask(x, y)) return false;
+    if (y == futonEdge(x) || y == FUTON_BOTTOM) return true;     // 上の縁（波）と下の縁
+    if (x == FUTON_LEFT || x == FUTON_RIGHT) return true;         // 左右の縁
+    // 縫い目：横に 3px 描いて 2px 空ける点線を、2 本
+    if ((y == FUTON_TOP + 8 || y == FUTON_TOP + 13) && (x - FUTON_LEFT) % 5 < 3) return true;
+    return false;
+}
+
 bool starPixel(int x, int y, int frame) {
     for (int i = 0; i < STAR_COUNT; ++i) {
         const int dx = x - STARS[i][0], dy = y - STARS[i][1];
