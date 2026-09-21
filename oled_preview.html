@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>mokomoko OLED Preview</title>
+    <title>mokoji OLED Preview</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500&display=swap');
 
@@ -373,13 +373,95 @@
             font-size: 10px;
             color: #a44;
         }
+
+        /* ── OLED の表示サイズ ──
+           キャンバスは 768x384 で描き、CSS で表示の大きさを変える。縮めるのは 2/3・1/2 だけにして、
+           1 ドットが整数ピクセルになるようにし、ドットが崩れないようにする。 */
+        :root {
+            --oled-w: 768px;
+        }
+
+        #oled {
+            width: var(--oled-w);
+            height: calc(var(--oled-w) / 2);
+        }
+
+        /* 右の列の上下（画面が狭いときは、今までどおり縦に並ぶだけ） */
+        #fixed-area,
+        #scroll-area {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        /* ── 広い画面: OLED を画面の上に固定し、その下だけをスクロールさせる ──
+           幅 1280px 以上（左の貼り付け欄と、ツリーを含む右の列が横に並べる幅）かつ高さ 640px 以上のときだけ。
+           これより狭い・低い画面では、ページ全体をスクロールする従来の表示のまま。 */
+        @media (min-width: 1280px) and (min-height: 640px) {
+            body {
+                height: 100vh;
+                overflow: hidden;
+                display: flex;
+                flex-direction: column;
+            }
+
+            header {
+                flex: none;
+            }
+
+            .layout {
+                flex: 1 1 auto;
+                min-height: 0;
+                flex-wrap: nowrap;
+            }
+
+            #input-col {
+                flex: 1 1 260px;
+                min-width: 260px;
+                min-height: 0;
+                overflow-y: auto;
+            }
+
+            /* 幅は中身（OLED・ツリー）で決める。残りを左の貼り付け欄が使う */
+            #preview-col {
+                flex: 0 0 auto;
+                min-height: 0;
+            }
+
+            #fixed-area {
+                flex: none;
+            }
+
+            #scroll-area {
+                flex: 1 1 auto;
+                min-height: 0;
+                overflow-y: auto;
+                padding: 14px 10px 0 0;
+                border-top: 1px solid var(--border);
+                scrollbar-width: thin;
+                scrollbar-color: #2a3a4a transparent;
+            }
+        }
+
+        /* 高さが足りない画面では、OLED を縮めて、スクロール領域を確保する */
+        @media (min-width: 1280px) and (min-height: 640px) and (max-height: 959px) {
+            :root {
+                --oled-w: 512px;
+            }
+        }
+
+        @media (min-width: 1280px) and (min-height: 640px) and (max-height: 779px) {
+            :root {
+                --oled-w: 384px;
+            }
+        }
     </style>
 </head>
 
 <body>
 
     <header>
-        <h1>mokomoko / OLED preview</h1>
+        <h1>mokoji / OLED preview</h1>
         <span id="status">待機中</span>
     </header>
 
@@ -410,56 +492,65 @@ LAMB_F = _img(
         <!-- 右: プレビュー -->
         <div id="preview-col">
 
-            <!-- OLED シミュレータ -->
-            <div>
-                <div class="section-label">OLED simulator</div>
-                <div class="oled-outer">
-                    <div class="oled-label-row">
-                        <span>SSD1306 · 0.96" · 128×64</span>
-                        <div class="oled-dot" id="power-dot"></div>
+            <!-- 上: OLED シミュレータとアニメの操作。広い画面では画面の上に固定する -->
+            <div id="fixed-area">
+
+                <!-- OLED シミュレータ -->
+                <div>
+                    <div class="section-label">OLED simulator</div>
+                    <div class="oled-outer">
+                        <div class="oled-label-row">
+                            <span>SSD1306 · 0.96" · 128×64</span>
+                            <div class="oled-dot" id="power-dot"></div>
+                        </div>
+                        <div class="oled-wrap">
+                            <canvas id="oled" width="768" height="384"></canvas>
+                        </div>
+                        <div class="oled-label-row" style="justify-content:center;font-size:9px;letter-spacing:.14em">
+                            mokoji device
+                        </div>
                     </div>
-                    <div class="oled-wrap">
-                        <canvas id="oled" width="768" height="384" style="width:768px;height:384px"></canvas>
+                </div>
+
+                <!-- アニメ コントロール -->
+                <div>
+                    <div class="section-label">animation</div>
+                    <div class="anim-ctrl">
+                        <span>sprite</span>
+                        <select id="anim-sel" onchange="onAnimSelChange()"></select>
+                        <button id="btn-play" onclick="togglePlay()">▶ play</button>
+                        <span>fps</span>
+                        <input type="range" id="fps" min="1" max="16" value="4"
+                            oninput="document.getElementById('fps-val').textContent=this.value;restartTimer()">
+                        <span id="fps-val">4</span>
+                        <span id="frame-counter" style="color:#555">f0</span>
                     </div>
-                    <div class="oled-label-row" style="justify-content:center;font-size:9px;letter-spacing:.14em">
-                        mokomoko device
-                    </div>
+                    <div id="lineage"></div>
                 </div>
             </div>
 
-            <!-- アニメ コントロール -->
-            <div>
-                <div class="section-label">animation</div>
-                <div class="anim-ctrl">
-                    <span>sprite</span>
-                    <select id="anim-sel" onchange="onAnimSelChange()"></select>
-                    <button id="btn-play" onclick="togglePlay()">▶ play</button>
-                    <span>fps</span>
-                    <input type="range" id="fps" min="1" max="16" value="4"
-                        oninput="document.getElementById('fps-val').textContent=this.value;restartTimer()">
-                    <span id="fps-val">4</span>
-                    <span id="frame-counter" style="color:#555">f0</span>
+            <!-- 下: ツリー・ズーム・貼り付けた候補。広い画面ではここだけスクロールする -->
+            <div id="scroll-area">
+
+                <!-- 進化ツリー（oled_preview_data.js から自動表示） -->
+                <div>
+                    <div class="section-label">evolution tree — game sprites</div>
+                    <div id="evo-tree"></div>
+                    <div id="evo-note"></div>
                 </div>
-                <div id="lineage"></div>
-            </div>
 
-            <!-- 進化ツリー（oled_preview_data.js から自動表示） -->
-            <div>
-                <div class="section-label">evolution tree — game sprites</div>
-                <div id="evo-tree"></div>
-                <div id="evo-note"></div>
-            </div>
+                <!-- ズーム比較 -->
+                <div>
+                    <div class="section-label">zoom — 1x / 2x / 4x</div>
+                    <div id="zoom-wrap"></div>
+                </div>
 
-            <!-- ズーム比較 -->
-            <div>
-                <div class="section-label">zoom — 1x / 2x / 4x</div>
-                <div id="zoom-wrap"></div>
-            </div>
+                <!-- スプライト一覧 -->
+                <div>
+                    <div class="section-label">pasted sprites — 貼り付けた候補</div>
+                    <div id="sprite-list"></div>
+                </div>
 
-            <!-- スプライト一覧 -->
-            <div>
-                <div class="section-label">pasted sprites — 貼り付けた候補</div>
-                <div id="sprite-list"></div>
             </div>
 
         </div>
@@ -468,8 +559,17 @@ LAMB_F = _img(
     <!-- python3 sprites_gen.py が生成。無くてもペースト機能は使える（file:// でも読める） -->
     <script src="oled_preview_data.js"></script>
     <script>
-        const LS_SRC = 'mokomoko_src';
-        const LS_SEL = 'mokomoko_selected';
+        const LS_SRC = 'mokoji_src';
+        const LS_SEL = 'mokoji_selected';
+
+        // 旧名（mokomoko_*）で保存した貼り付けと選択を引き継ぐ（1 回だけ）
+        try {
+            [['mokomoko_src', LS_SRC], ['mokomoko_selected', LS_SEL]].forEach(([oldKey, newKey]) => {
+                const v = localStorage.getItem(oldKey);
+                if (v !== null && localStorage.getItem(newKey) === null) localStorage.setItem(newKey, v);
+                localStorage.removeItem(oldKey);
+            });
+        } catch (e) { }
 
         // 貼り付けた候補スプライト（名前 → 0/1 の 24x24）
         let sprites = {};
