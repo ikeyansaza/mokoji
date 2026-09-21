@@ -19,9 +19,9 @@ import sprites_gen
 
 # 角を持つスプライト → 頭のてっぺんの行。
 # MOUFLON_LONGHORN は体が 1 行下にずれていて、頭頂部が row 6（row 5 は根元の毛束）。
-# YOUNG_WILD は、ベビーの小さな体に角の芽を足した形で、頭頂部が row 8。
+# YOUNG_WILD は、ベビーの小さな体に角の芽を足した形で、頭頂部が row 7。
 HEAD_TOP = {
-    "YOUNG_WILD_F": 8,
+    "YOUNG_WILD_F": 7,
     "ADULT_MOUFLON_F": 5,
     "ADULT_BIGHORN_F": 5,
     "ADULT_MOUFLON_LONGHORN_F": 6,
@@ -31,11 +31,12 @@ HEAD_TOP = {
 # 頭のてっぺんから耳・体の上端まで（耳は頭頂 +4 行、体の上端は +5 行）。
 # 体全体を対象にすると、手描きの脚・腕の斜め接触まで拾ってしまい角と無関係な失敗になる。
 HEAD_REGION_ROWS = 6
-# YOUNG_WILD は、耳が頭から離れている（ベビーと同じ作り）ので、耳の行を含めず、角の芽と頭（頭頂 +1 行）だけを見る。
-HEAD_REGION_ROWS_OVERRIDE = {"YOUNG_WILD_F": 2}
+# YOUNG_WILD は、耳が頭から離れている（ベビーと同じ作り）ので、耳の行を含めず、角の芽と頭（頭頂 +2 行）だけを見る。
+HEAD_REGION_ROWS_OVERRIDE = {"YOUNG_WILD_F": 3}
 
-# 角が頭頂より上に出てよい行数。既定は 1 行。YOUNG_WILD の角の芽は、頭の上に 2 行ある。
-MAX_HORN_RISE = {"YOUNG_WILD_F": 2}
+# 頭と分かれていてよい塊の数（既定は 1 = 頭と 1 つの塊）。
+# YOUNG_WILD は、角の芽が頭から離れて外へ反っているので、頭 + 左右の角の芽の 3 つ。
+EXPECTED_PARTS = {"YOUNG_WILD_F": 3}
 
 
 def grid(name):
@@ -74,9 +75,10 @@ class HornedSpriteTest(unittest.TestCase):
         for name in HEAD_TOP:
             with self.subTest(sprite=name):
                 comps = components(head_region(name))
+                expected = EXPECTED_PARTS.get(name, 1)
                 self.assertEqual(
-                    len(comps), 1,
-                    f"{name}: {len(comps)} 個に分断（細い線・浮いたピクセルあり）: "
+                    len(comps), expected,
+                    f"{name}: {len(comps)} 個に分断（期待は {expected} 個。細い線・浮いたピクセルあり）: "
                     + str([sorted(c)[0] for c in comps]),
                 )
 
@@ -92,7 +94,7 @@ class HornedSpriteTest(unittest.TestCase):
     def test_horns_do_not_tower_over_head(self):
         # 耳の横に巻く設計。頭頂より上に出すぎると、頭上の飾りに見えてしまう（既定は 1 行まで）
         for name, top in HEAD_TOP.items():
-            rise = MAX_HORN_RISE.get(name, 1)
+            rise = 1
             with self.subTest(sprite=name):
                 first_on = next(y for y, r in enumerate(grid(name)) if "#" in r)
                 self.assertGreaterEqual(
