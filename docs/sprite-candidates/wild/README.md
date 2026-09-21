@@ -23,7 +23,7 @@
 | スプライト | 案 | 特徴 |
 |---|---|---|
 | ADULT_MOUFLON | MOUFLON_BAND_M2_SLIM1 | 背の帯、鼻まわりが白い、顔が細い。角は小さな巻き角 |
-| ADULT_BIGHORN | BIGHORN_DITHER_M1_SLIM2 | 胴が市松、鼻まわりが白い、顔がさらに細い。角は小さな巻き角 |
+| ADULT_BIGHORN | BIGHORN_DITHER_M1_SLIM2_TIP | 胴が市松、鼻まわりが白い、顔がさらに細い。角は小さな巻き角で、先が 4 マス幅 |
 | ADULT_MOUFLON_LONGHORN | MOUFLON_HORN_W2 | 通常版の顔・胴に、横に大きく巻いた細めの角 |
 | ADULT_BIGHORN_LONGHORN | BIGHORN_HORN_W1 | 通常版の顔・胴に、横に大きく巻いた太めの角 |
 
@@ -38,7 +38,8 @@
 | BIGHORN_OLD | ビッグホーン通常版の旧デザイン | 旧デザイン |
 | BIGHORN_LONGHORN_OLD | ビッグホーン角長版の旧デザイン。太い角が下へ垂れる | 旧デザイン |
 | MOUFLON_BAND_M2_SLIM1 | 背の帯、鼻まわり白（鼻 1 マス）、顔 1 段階細く | 採用: ADULT_MOUFLON |
-| BIGHORN_DITHER_M1_SLIM2 | 胴が市松、鼻まわり白（鼻 3 マス）、顔 2 段階細く | 採用: ADULT_BIGHORN |
+| BIGHORN_DITHER_M1_SLIM2 | 胴が市松、鼻まわり白（鼻 3 マス）、顔 2 段階細く | 旧デザイン（BIGHORN_DITHER_M1_SLIM2_TIP に差し替えた） |
+| BIGHORN_DITHER_M1_SLIM2_TIP | 上の角の先（row 4）を 4 マス幅にした | 採用: ADULT_BIGHORN |
 | MOUFLON_HORN_W2 | 横に大きく巻いた細めの角 | 採用: ADULT_MOUFLON_LONGHORN |
 | BIGHORN_HORN_W1 | 横に大きく巻いた太めの角 | 採用: ADULT_BIGHORN_LONGHORN |
 | MOUFLON_SADDLE | 脇腹に淡い斑。頬紅に見えた | 未採用 |
