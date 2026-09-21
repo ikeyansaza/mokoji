@@ -9,6 +9,7 @@
 #include "kana.h"
 #include "jump_game.h"
 #include "background.h"
+#include "eat_motion.h"
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>
@@ -1375,6 +1376,126 @@ static void test_futon_pattern_is_simple() {
     }
 }
 
+// ---- ご飯：干し草ロールを食べるモーション -----------------------------------
+static void test_eat_bite_timing() {
+    using namespace eat_motion;
+    // 3 回ぱくっとする（各 BITE_LEN フレーム）。ぱくっの間は、うなずいている。
+    for (int i = 0; i < BITE_COUNT; ++i) {
+        for (int t = BITE_START[i]; t < BITE_START[i] + BITE_LEN; ++t) assert(isBiting(t));
+        assert(!isBiting(BITE_START[i] - 1));
+        assert(!isBiting(BITE_START[i] + BITE_LEN));
+    }
+    assert(!isBiting(0));
+    // かじった回数は、ぱくっが始まるたびに 1 つ増える（うなずく瞬間に、かじり跡が付く）
+    assert(bitesTaken(0) == 0);
+    assert(bitesTaken(BITE_START[0] - 1) == 0);
+    assert(bitesTaken(BITE_START[0]) == 1);
+    assert(bitesTaken(BITE_START[1] - 1) == 1);
+    assert(bitesTaken(BITE_START[1]) == 2);
+    assert(bitesTaken(BITE_START[2]) == 3);
+    assert(bitesTaken(Game::FEED_ACTION_TICKS) == 3);
+    // ご飯の動き（Game::FEED_ACTION_TICKS）の中に、3 回とも収まる
+    assert(BITE_START[2] + BITE_LEN <= Game::FEED_ACTION_TICKS);
+    // 1 回目は、ご飯の音（画面が SOUND_BLOCK_TICKS フレーム止まる）が終わって、ロールを見つける間が
+    // できてから始まる。早いと、音が終わった瞬間に、いきなり食べている絵が出る。
+    assert(BITE_START[0] >= SOUND_BLOCK_TICKS + LOOK_TICKS);
+    // ぱくっの間隔は 1 秒（20 フレーム）。間には、体を戻す間（BITE_LEN より長い）がある
+    for (int i = 1; i < BITE_COUNT; ++i) {
+        assert(BITE_START[i] - BITE_START[i - 1] == 20);
+        assert(BITE_START[i] - BITE_START[i - 1] > BITE_LEN);
+    }
+}
+
+static void test_eat_lean_only_while_biting() {
+    using namespace eat_motion;
+    int dx, dy;
+    lean(0, 1, &dx, &dy);
+    assert(dx == 0 && dy == 0);                              // ぱくっの外では、傾かない
+    lean(BITE_START[0], 1, &dx, &dy);
+    assert(dx == LEAN_PX && dy == LEAN_PX);                  // 右のロールへ：右下へ傾く
+    lean(BITE_START[1], -1, &dx, &dy);
+    assert(dx == -LEAN_PX && dy == LEAN_PX);                 // 左のロールへ：左下へ傾く
+}
+
+static void test_eat_direction_flips_at_the_right_half() {
+    using namespace eat_motion;
+    assert(direction(0) == 1);
+    assert(direction(56) == 1);                              // 境目まで、右にロール
+    assert(direction(57) == -1);                             // 画面の右半分では、左にロール
+    assert(direction(80) == -1);
+}
+
+static void test_eat_bale_stays_on_screen_and_beside_the_sheep() {
+    using namespace eat_motion;
+    // 羊が歩く範囲（0〜80）のどこにいても、ロールは画面に収まる。羊の 2 倍スプライト（48px 幅）と重ならない。
+    for (int walk_x = 0; walk_x <= 80; ++walk_x) {
+        const int left = baleLeft(walk_x);
+        assert(left >= 0 && left + BALE_W - 1 < background::W);
+        if (direction(walk_x) > 0) assert(left >= walk_x + 44);            // 右に置くときは、羊の右端の外
+        else                        assert(left + BALE_W - 1 <= walk_x + 4);  // 左に置くときは、羊の左端の外
+    }
+    // 根元は草の地面の帯（y=56〜）の真上、上端は羊の足元より上まで届く高さ
+    assert(GROUND_Y + 1 == background::GRASS_TOP);
+    assert(GROUND_Y - BALE_H + 1 >= 0);
+}
+
+static int count_bale(int bites, int dir, int dx0 = 0, int dx1 = eat_motion::BALE_W - 1) {
+    int n = 0;
+    for (int dy = 0; dy < eat_motion::BALE_H; ++dy)
+        for (int dx = dx0; dx <= dx1; ++dx)
+            if (eat_motion::balePixel(dx, dy, bites, dir)) ++n;
+    return n;
+}
+
+static void test_eat_bale_is_eaten_bite_by_bite() {
+    using namespace eat_motion;
+    for (int dir : { 1, -1 }) {
+        // かじるたびに減り、3 回でなくなる
+        assert(count_bale(0, dir) > count_bale(1, dir));
+        assert(count_bale(1, dir) > count_bale(2, dir));
+        assert(count_bale(2, dir) > count_bale(3, dir));
+        assert(count_bale(3, dir) == 0);
+        assert(count_bale(0, dir) > 0);
+        // 範囲外の回数でも壊れない（負は、まだ食べていない扱い。超えたらなし）
+        assert(count_bale(4, dir) == 0);
+        assert(count_bale(-1, dir) == count_bale(0, dir));
+    }
+    // ロールの外は点かない
+    assert(!balePixel(-1, 0, 0, 1) && !balePixel(BALE_W, 0, 0, 1));
+    assert(!balePixel(0, -1, 0, 1) && !balePixel(0, BALE_H, 0, 1));
+}
+
+static void test_eat_bale_is_bitten_from_the_sheep_side() {
+    using namespace eat_motion;
+    // 1 回目のかじり跡は、羊のいる側（右に置くなら、ロールの左側）から付く。反対側は、そのまま。
+    const int side = 4;
+    const int r0 = BALE_W - side, r1 = BALE_W - 1;
+    assert(count_bale(1, 1, 0, side - 1) < count_bale(0, 1, 0, side - 1));      // 左側が欠ける
+    assert(count_bale(1, 1, r0, r1) == count_bale(0, 1, r0, r1));                 // 右側は無傷
+    assert(count_bale(1, -1, r0, r1) < count_bale(0, -1, r0, r1));               // 左に置くなら、右側が欠ける
+    assert(count_bale(1, -1, 0, side - 1) == count_bale(0, -1, 0, side - 1));    // 左側は無傷
+}
+
+static void test_feed_action_lasts_longer_than_other_actions() {
+    // ぱくっを 1 秒おきに 3 回するので、ご飯の動きは他の動きより長い（FEED_ACTION_TICKS）。
+    // 撫でる・毛刈りなどは、今までどおり ACTION_TICKS。
+    Game feed = make_game_with(50, 50);
+    menu_select(feed, Game::Action::FEED);
+    assert(feed.action() == Game::Action::FEED);
+    for (int i = 0; i < Game::FEED_ACTION_TICKS; ++i) feed.tick();
+    assert(feed.action() == Game::Action::FEED);         // まだ続いている
+    feed.tick();
+    assert(feed.action() == Game::Action::NONE);         // 終わった
+
+    Game pet = make_game_with(50, 50);
+    menu_select(pet, Game::Action::PET);
+    for (int i = 0; i < Game::ACTION_TICKS; ++i) pet.tick();
+    assert(pet.action() == Game::Action::PET);
+    pet.tick();
+    assert(pet.action() == Game::Action::NONE);
+    assert(Game::FEED_ACTION_TICKS > Game::ACTION_TICKS);
+}
+
 int main() {
     std::setbuf(stdout, nullptr);
     std::srand(42);   // 進化判定の再現性のため固定シード
@@ -1417,6 +1538,13 @@ int main() {
     RUN(test_futon_leaves_the_head_and_shoulders_visible);
     RUN(test_futon_top_edge_is_wavy);
     RUN(test_futon_pattern_is_simple);
+    RUN(test_eat_bite_timing);
+    RUN(test_eat_lean_only_while_biting);
+    RUN(test_eat_direction_flips_at_the_right_half);
+    RUN(test_eat_bale_stays_on_screen_and_beside_the_sheep);
+    RUN(test_eat_bale_is_eaten_bite_by_bite);
+    RUN(test_eat_bale_is_bitten_from_the_sheep_side);
+    RUN(test_feed_action_lasts_longer_than_other_actions);
     RUN(test_sun_is_fixed_in_the_sky);
     RUN(test_sun_shape_and_steady);
     RUN(test_clouds_stay_in_sky_and_drift);

@@ -295,7 +295,8 @@ void Game::updateWalk() {
     // メニューからのアクション中は正面を向いて固定
     if (_action != Action::NONE) {
         _face = Face::FRONT;
-        if (_walk_tick > 40) _action = Action::NONE;
+        const int limit = (_action == Action::FEED) ? FEED_ACTION_TICKS : ACTION_TICKS;
+        if (_walk_tick > limit) _action = Action::NONE;
         return;
     }
 

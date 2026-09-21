@@ -14,6 +14,7 @@ add_executable(mokoji
     game.cpp
     jump_game.cpp
     background.cpp
+    eat_motion.cpp
     display.cpp
     sound.cpp
     save.cpp
